@@ -1,0 +1,4 @@
+/dist/
+/server-init
+*.test
+*.out
