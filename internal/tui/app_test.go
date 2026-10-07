@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -60,22 +61,106 @@ func okFacts() *facts.Facts {
 	return &facts.Facts{IsRoot: true, Systemd: true, OSSupported: true, OSPretty: "Debian 12", SSHPorts: []int{22}, FreeDiskMB: 9000}
 }
 
-func TestWelcomeBlocksWithoutRoot(t *testing.T) {
+func TestMenuBlocksWithoutRoot(t *testing.T) {
 	f := okFacts()
 	f.IsRoot = false
 	a := testApp(t, f)
-	a.screen = scrWelcome
-	if !strings.Contains(a.viewWelcome(), "run as root") {
+	a.screen = scrMenu
+	a.menu = a.mainMenu()
+	if !strings.Contains(a.View().Content, "run as root") {
 		t.Fatal("missing root warning")
 	}
+	a.menu.cur = 1
 	a.Update(key("enter"))
-	if a.screen != scrWelcome {
+	if a.screen != scrMenu {
 		t.Fatal("must not continue without root")
 	}
 	a.opts.DryRun = true
+	a.menu = a.mainMenu()
+	a.menu.cur = 1
 	a.Update(key("enter"))
-	if a.screen != scrPicker {
+	if a.screen != scrPicker || a.flow != flowCustom {
 		t.Fatal("dry run works without root")
+	}
+	a.Update(key("esc"))
+	if a.screen != scrMenu {
+		t.Fatal("esc in the picker must return to the menu")
+	}
+}
+
+func TestMenuServerInfo(t *testing.T) {
+	f := okFacts()
+	f.Hostname, f.ServerIP, f.CPUs, f.MemTotalMB, f.DiskMB = "web1", "203.0.113.5", 2, 4096, 40960
+	f.Uptime = 50 * time.Hour
+	a := testApp(t, f)
+	a.screen = scrMenu
+	v := a.View().Content
+	for _, want := range []string{"web1", "Debian 12", "203.0.113.5", "2 vCPU", "RAM 4.0 GB", "of 40.0 GB", "up 2d 2h", "SSH port 22",
+		"Full setup", "Custom setup", "Manage"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("menu misses %q:\n%s", want, v)
+		}
+	}
+}
+
+func TestFullSetupUsesQuickForms(t *testing.T) {
+	m := &moduletest.Fake{IDValue: "x"}
+	a := testApp(t, okFacts(), m)
+	a.screen = scrMenu
+	a.menu.cur = 0
+	_, cmd := a.Update(key("enter"))
+	if cmd == nil || a.flow != flowFull || !a.opts.Env.Quick {
+		t.Fatal("full setup must start in quick mode")
+	}
+	a.Update(cmd()) // preparedMsg -> forms (none) -> check
+	if a.screen != scrChecking {
+		t.Fatalf("screen = %v", a.screen)
+	}
+	a.Update(checkedMsg{plans: []module.Plan{{Module: "x"}}})
+	a.Update(key("esc"))
+	if a.screen != scrMenu {
+		t.Fatal("esc in the summary of the full setup must return to the menu")
+	}
+	a.menu.cur = 1
+	a.Update(key("enter"))
+	if a.screen != scrPicker || a.opts.Env.Quick {
+		t.Fatal("custom setup must ask every question")
+	}
+}
+
+func TestManageAction(t *testing.T) {
+	var got []string
+	a := testApp(t, okFacts())
+	a.opts.Commands = map[string]Command{"f2b": func(_ context.Context, _ *module.Env, args []string, out io.Writer) error {
+		got = args
+		_, _ = io.WriteString(out, "Unbanned 203.0.113.7\n")
+		return nil
+	}}
+	a.screen = scrMenu
+	a.menu.cur = 2
+	a.Update(key("enter"))
+	if a.screen != scrManage {
+		t.Fatal("manage menu not opened")
+	}
+	cmd := a.runAction("test", "f2b", []string{"unban", "203.0.113.7"})
+	for _, msg := range runBatch(cmd) {
+		if _, ok := msg.(actionDoneMsg); ok {
+			a.Update(msg)
+		}
+	}
+	if !a.act.done || strings.Join(got, " ") != "unban 203.0.113.7" {
+		t.Fatalf("done=%v args=%v", a.act.done, got)
+	}
+	if !strings.Contains(a.View().Content, "Unbanned 203.0.113.7") {
+		t.Fatalf("output not shown:\n%s", a.View().Content)
+	}
+	a.Update(key("enter"))
+	if a.screen != scrManage {
+		t.Fatal("enter after an action must return to the manage menu")
+	}
+	a.Update(key("esc"))
+	if a.screen != scrMenu {
+		t.Fatal("esc in the manage menu must return to the main menu")
 	}
 }
 
@@ -90,8 +175,8 @@ func TestSummaryDefaultsToCancel(t *testing.T) {
 		t.Fatalf("summary content:\n%s", a.vp.GetContent())
 	}
 	_, cmd := a.Update(key("enter"))
-	if !isQuit(cmd) || m.Applied != 0 {
-		t.Fatal("enter on the default button must quit without applying")
+	if isQuit(cmd) || a.screen != scrMenu || m.Applied != 0 {
+		t.Fatal("enter on the default button must go back to the menu without applying")
 	}
 }
 

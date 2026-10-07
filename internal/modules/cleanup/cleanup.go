@@ -38,6 +38,9 @@ func (*Module) Description() string {
 
 func (m *Module) Form(env *module.Env) []*huh.Group {
 	a := &env.Answers.Cleanup
+	if env.Quick {
+		return nil
+	}
 	return []*huh.Group{
 		huh.NewGroup(
 			huh.NewConfirm().

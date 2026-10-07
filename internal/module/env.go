@@ -25,6 +25,9 @@ type Env struct {
 	// Selected reports whether another module takes part in this run (ssh
 	// asks whether ufw will run, for example).
 	Selected func(id string) bool
+	// Quick is set by the full setup: forms ask only the essential
+	// questions, everything else keeps the recommended answer.
+	Quick bool
 }
 
 // For returns a copy of env bound to one module.
@@ -43,6 +46,13 @@ func (e *Env) For(id string) *Env {
 		c.Selected = func(string) bool { return false }
 	}
 	return &c
+}
+
+// Advanced returns a group hide func for questions the full setup skips.
+// hide is the group's own condition and may be nil.
+func (e *Env) Advanced(hide func() bool) func() bool {
+	quick := e.Quick
+	return func() bool { return quick || hide != nil && hide() }
 }
 
 // Infof logs a user-visible progress line.

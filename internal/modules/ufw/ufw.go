@@ -55,6 +55,8 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				Title("Allow HTTPS (443/tcp)?").
 				Description("Only needed for a web server on this host.").
 				Value(&a.AllowHTTPS),
+		).Title("Web server"),
+		huh.NewGroup(
 			huh.NewInput().
 				Title("Trusted interfaces (optional)").
 				Description("All traffic on these interfaces is allowed, e.g. a mesh VPN: tailscale0 wg0. Space separated, empty = none.").
@@ -73,7 +75,7 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				Title("Stop Docker from bypassing ufw?").
 				Description("Docker publishes ports past ufw. This adds DOCKER-USER rules to /etc/ufw/after.rules; allow a container port with: ufw route allow proto tcp from any to any port 80").
 				Value(&a.DockerFix),
-		),
+		).WithHideFunc(env.Advanced(nil)),
 	}
 }
 

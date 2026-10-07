@@ -1,5 +1,6 @@
-// Package tui is the interactive front end: welcome (preflight) -> module
-// picker -> per-module forms -> summary -> apply -> report.
+// Package tui is the interactive front end: main menu (server info) ->
+// full setup, custom setup (module picker) or manage -> per-module forms ->
+// summary -> apply -> report.
 package tui
 
 import (
@@ -22,7 +23,9 @@ import (
 type screen int
 
 const (
-	scrWelcome screen = iota
+	scrMenu screen = iota
+	scrManage
+	scrAction
 	scrPicker
 	scrForms
 	scrChecking
@@ -38,6 +41,7 @@ type Options struct {
 	Env      *module.Env
 	DryRun   bool
 	Only     []string // preselected modules (--only)
+	Commands map[string]Command
 	Sink     *log.Sink
 	LogPath  string
 }
@@ -74,6 +78,10 @@ type App struct {
 
 	screen        screen
 	width, height int
+	menu          *menu
+	manage        *menu
+	act           *action
+	flow          flow
 
 	picker   *huh.Form
 	selected []string
@@ -124,6 +132,7 @@ func New(ctx context.Context, opts Options) *App {
 	}
 	a.vp.SoftWrap = true
 	a.logVP.SoftWrap = true
+	a.menu = a.mainMenu()
 	for _, m := range opts.Registry.All() {
 		if module.IsRequired(m) {
 			continue
@@ -173,6 +182,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.layout()
 	case logMsg:
 		a.addLog(msg.line)
+		if a.screen == scrAction && a.act != nil && a.act.running {
+			a.act.out = append(a.act.out, msg.line.Msg)
+		}
 		return a, nil
 	case loginRequestMsg:
 		a.modal = newLoginModal(msg)
@@ -214,8 +226,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch a.screen {
-	case scrWelcome:
-		return a.updateWelcome(msg)
+	case scrMenu:
+		a.notice = ""
+		return a.updateMenu(a.menu, msg)
+	case scrManage:
+		a.notice = ""
+		return a.updateMenu(a.manage, msg)
+	case scrAction:
+		return a.updateAction(msg)
 	case scrPicker:
 		return a.updatePicker(msg)
 	case scrForms:
@@ -240,25 +258,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// --- welcome ---------------------------------------------------------------
-
-func (a *App) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
-	k, ok := msg.(tea.KeyPressMsg)
-	if !ok {
-		return a, nil
-	}
-	switch k.String() {
-	case "q", "esc":
-		return a, tea.Quit
-	case "enter":
-		if len(a.blocking()) > 0 {
-			return a, nil
-		}
-		return a, a.startPicker()
-	}
-	return a, nil
-}
-
 // --- picker ----------------------------------------------------------------
 
 func (a *App) startPicker() tea.Cmd {
@@ -279,13 +278,15 @@ func (a *App) startPicker() tea.Cmd {
 			// huh v2.0.3 sizes a MultiSelect without counting the description
 			Height(len(opts) + 4),
 	)).WithTheme(formTheme()).WithShowHelp(true)
+	a.flow = flowCustom
+	a.opts.Env.Quick = false
 	a.screen = scrPicker
 	return a.picker.Init()
 }
 
 func (a *App) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if k, ok := msg.(tea.KeyPressMsg); ok && k.String() == "esc" {
-		a.screen = scrWelcome
+		a.screen = scrMenu
 		return a, nil
 	}
 	m, cmd := a.picker.Update(msg)
@@ -304,6 +305,7 @@ func (a *App) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, a.startPicker()
 		}
 		a.runner.Modules = mods
+		a.forms, a.plans, a.checkErr = nil, nil, nil
 		return a, a.prepare()
 	}
 	return a, cmd
@@ -334,7 +336,7 @@ func (a *App) openForm(i int) tea.Cmd {
 		return a.check()
 	}
 	if i < 0 {
-		return a.startPicker()
+		return a.back()
 	}
 	a.formIdx = i
 	mf := a.forms[i]
@@ -410,9 +412,11 @@ func (a *App) updateSummary(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(a.forms) > 0 {
 			return a, a.openForm(len(a.forms) - 1)
 		}
-		return a, a.startPicker()
-	case "q", "n":
+		return a, a.back()
+	case "q":
 		return a, tea.Quit
+	case "n":
+		return a, a.back()
 	case "left", "right", "tab", "shift+tab", "h", "l":
 		if a.canApply() {
 			a.applyBtn = !a.applyBtn
@@ -427,7 +431,7 @@ func (a *App) updateSummary(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.canApply() && a.applyBtn {
 			return a, a.startApply()
 		}
-		return a, tea.Quit
+		return a, a.back()
 	}
 	var cmd tea.Cmd
 	a.vp, cmd = a.vp.Update(msg)

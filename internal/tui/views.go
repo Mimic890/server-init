@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -29,8 +30,23 @@ func (a *App) View() tea.View {
 }
 
 func (a *App) header() string {
-	steps := []string{"Preflight", "Modules", "Questions", "Summary", "Apply", "Report"}
-	cur := map[screen]int{scrWelcome: 0, scrPicker: 1, scrForms: 2, scrChecking: 3, scrSummary: 3, scrApply: 4, scrReport: 5}[a.screen]
+	title := sBold.Render("server-init") + sDim.Render(" "+a.opts.Version)
+	if a.opts.DryRun {
+		title += " " + sWarn.Render("[dry run]")
+	}
+	switch a.screen {
+	case scrMenu, scrManage, scrAction:
+		return title + "\n"
+	}
+	steps := []string{"Questions", "Summary", "Apply", "Report"}
+	cur := map[screen]int{scrForms: 0, scrChecking: 1, scrSummary: 1, scrApply: 2, scrReport: 3}[a.screen]
+	if a.flow == flowCustom {
+		steps = append([]string{"Modules"}, steps...)
+		cur++
+		if a.screen == scrPicker {
+			cur = 0
+		}
+	}
 	parts := make([]string, len(steps))
 	for i, s := range steps {
 		switch {
@@ -42,17 +58,18 @@ func (a *App) header() string {
 			parts[i] = sDim.Render(s)
 		}
 	}
-	title := sBold.Render("server-init") + sDim.Render(" "+a.opts.Version)
-	if a.opts.DryRun {
-		title += " " + sWarn.Render("[dry run]")
-	}
-	return title + "  " + strings.Join(parts, sDim.Render(" › ")) + "\n"
+	name := map[flow]string{flowFull: "Full setup", flowCustom: "Custom setup", flowManage: "Manage"}[a.flow]
+	return title + "  " + sHeader.Render(name) + "  " + strings.Join(parts, sDim.Render(" › ")) + "\n"
 }
 
 func (a *App) body() string {
 	switch a.screen {
-	case scrWelcome:
-		return a.viewWelcome()
+	case scrMenu:
+		return a.viewMenu(a.menu, "")
+	case scrManage:
+		return a.viewMenu(a.manage, "Manage")
+	case scrAction:
+		return a.viewAction()
 	case scrPicker:
 		return a.picker.View()
 	case scrForms:
@@ -75,63 +92,106 @@ func (a *App) body() string {
 	return ""
 }
 
-func check(ok bool) string {
-	if ok {
-		return sOK.Render(iconOK)
-	}
-	return sErr.Render(iconFail)
-}
-
-func (a *App) viewWelcome() string {
+// serverInfo is the box at the top of the main menu.
+func (a *App) serverInfo() string {
 	f := a.opts.Env.Facts
-	var b strings.Builder
-	b.WriteString(sHeader.Render("Initial setup and hardening for Debian 12+ / Ubuntu 24.04+") + "\n\n")
-	row := func(icon, label, value string) {
-		fmt.Fprintf(&b, "  %s %-14s %s\n", icon, label, value)
+	dot := sDim.Render(" · ")
+	name := f.Hostname
+	if name == "" {
+		name = "server"
 	}
-	osIcon := sOK.Render(iconOK)
-	osNote := ""
+	osName := f.OSPretty
 	if !f.OSSupported {
-		osIcon = sWarn.Render(iconWarn)
-		osNote = sWarn.Render("  (not tested: targets Debian 12+ / Ubuntu 24.04+)")
+		osName = sWarn.Render(osName + " (not tested: targets Debian 12+ / Ubuntu 24.04+)")
 	}
-	row(osIcon, "OS", f.OSPretty+osNote)
-	row(check(f.IsRoot), "root", map[bool]string{true: "yes", false: "no"}[f.IsRoot])
-	row(check(f.Systemd), "systemd", map[bool]string{true: "running", false: "not found"}[f.Systemd])
-	diskOK := f.FreeDiskMB >= facts.MinFreeDiskMB
-	row(check(diskOK), "free disk", fmt.Sprintf("%.1f GB on /", float64(f.FreeDiskMB)/1024))
-	inet := sOK.Render(iconOK)
-	if !f.Internet {
-		inet = sWarn.Render(iconWarn)
+	lines := []string{sBold.Render(name) + dot + osName}
+
+	var hw []string
+	if f.ServerIP != "" {
+		hw = append(hw, "IP "+f.ServerIP)
 	}
-	row(inet, "internet", map[bool]string{true: "reachable", false: "package mirrors not reachable"}[f.Internet])
+	if f.CPUs > 0 {
+		hw = append(hw, fmt.Sprintf("%d vCPU", f.CPUs))
+	}
+	if f.MemTotalMB > 0 {
+		hw = append(hw, fmt.Sprintf("RAM %s", gb(f.MemTotalMB)))
+	}
+	disk := fmt.Sprintf("disk %s free", gb(f.FreeDiskMB))
+	if f.DiskMB > 0 {
+		disk = fmt.Sprintf("disk %s free of %s", gb(f.FreeDiskMB), gb(f.DiskMB))
+	}
+	if f.FreeDiskMB < facts.MinFreeDiskMB {
+		disk = sWarn.Render(disk)
+	}
+	hw = append(hw, disk)
+	if f.Uptime > 0 {
+		hw = append(hw, "up "+uptime(f.Uptime))
+	}
+	lines = append(lines, strings.Join(hw, dot))
+
 	ports := make([]string, len(f.SSHPorts))
 	for i, p := range f.SSHPorts {
 		ports[i] = fmt.Sprint(p)
 	}
-	sock := ""
+	conn := "SSH port " + strings.Join(ports, ", ")
 	if f.SSHSocket {
-		sock = sDim.Render("  (socket activation)")
+		conn += sDim.Render(" (socket)")
 	}
-	row(sDim.Render(iconSkip), "SSH port(s)", strings.Join(ports, ", ")+sock)
-	client := f.ClientIP
-	if client == "" {
-		client = sDim.Render("unknown (not an SSH session)")
+	if f.ClientIP != "" {
+		conn += dot + "your IP " + f.ClientIP
 	}
-	row(sDim.Render(iconSkip), "your IP", client)
-	row(sDim.Render(iconSkip), "hostname", f.Hostname)
-	b.WriteString("\n")
-	if bl := a.blocking(); len(bl) > 0 {
-		for _, x := range bl {
-			b.WriteString(sErr.Render("  cannot continue: "+x) + "\n")
-		}
-		b.WriteString("\n" + sHelp.Render("q quit"))
-		return b.String()
+	if !f.Internet {
+		conn += dot + sWarn.Render("package mirrors not reachable")
 	}
-	b.WriteString(sDim.Render("  Nothing is changed until you confirm the summary.") + "\n")
-	b.WriteString(sDim.Render("  Keep your current SSH session open during the whole run.") + "\n\n")
-	b.WriteString(sHelp.Render("enter continue · q quit"))
-	return b.String()
+	lines = append(lines, conn)
+	w := 0
+	for _, l := range lines {
+		w = max(w, lipgloss.Width(l))
+	}
+	return sBox.Width(min(w+4, max(a.width, 40))).Render(strings.Join(lines, "\n"))
+}
+
+func (a *App) viewMenu(m *menu, title string) string {
+	var b strings.Builder
+	b.WriteString(a.serverInfo() + "\n\n")
+	if title != "" {
+		b.WriteString(sHeader.Render(title) + "\n\n")
+	}
+	b.WriteString(m.view())
+	for _, x := range a.blocking() {
+		b.WriteString("\n" + sErr.Render("Cannot continue: "+x))
+	}
+	if a.notice != "" {
+		b.WriteString("\n" + sWarn.Render(a.notice) + "\n")
+	}
+	if a.screen == scrMenu && len(a.blocking()) == 0 {
+		b.WriteString("\n" + sDim.Render("Nothing is changed until you confirm the summary.") + "\n")
+	}
+	help := "↑/↓ choose · enter open · q quit"
+	if a.screen == scrManage {
+		help = "↑/↓ choose · enter open · esc back · q quit"
+	}
+	return b.String() + "\n" + sHelp.Render(help)
+}
+
+func gb(mb uint64) string {
+	if mb < 1024 {
+		return fmt.Sprintf("%d MB", mb)
+	}
+	return fmt.Sprintf("%.1f GB", float64(mb)/1024)
+}
+
+func uptime(d time.Duration) string {
+	days := int(d.Hours()) / 24
+	h := int(d.Hours()) % 24
+	m := int(d.Minutes()) % 60
+	switch {
+	case days > 0:
+		return fmt.Sprintf("%dd %dh", days, h)
+	case h > 0:
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+	return fmt.Sprintf("%dm", m)
 }
 
 // renderSummary fills the viewport with all planned changes.
@@ -205,18 +265,18 @@ func (a *App) summaryFooter() string {
 	scroll := sHelp.Render(fmt.Sprintf("↑/↓ pgup/pgdn scroll (%3.0f%%) · esc back", a.vp.ScrollPercent()*100))
 	switch {
 	case a.checkErr != nil:
-		return scroll + "\n" + sHelp.Render("q quit")
+		return scroll + "\n" + sHelp.Render("enter back · q quit")
 	case a.opts.DryRun:
-		return scroll + "\n" + sWarn.Render("Dry run: nothing was changed.") + " " + sHelp.Render("enter/q quit")
+		return scroll + "\n" + sWarn.Render("Dry run: nothing was changed.") + " " + sHelp.Render("enter back · q quit")
 	case runner.NothingToDo(a.plans):
-		return scroll + "\n" + sOK.Render("Everything is already applied.") + " " + sHelp.Render("enter/q quit")
+		return scroll + "\n" + sOK.Render("Everything is already applied.") + " " + sHelp.Render("enter back · q quit")
 	}
 	apply, cancel := sButton.Render("Apply"), sButtonF.Render("Cancel")
 	if a.applyBtn {
 		apply, cancel = sButtonF.Render("Apply"), sButton.Render("Cancel")
 	}
 	return scroll + "\n" + sBold.Render("Apply these changes?") + "  " + apply + " " + cancel +
-		"  " + sHelp.Render("←/→ choose · enter confirm · y apply · n cancel")
+		"  " + sHelp.Render("←/→ choose · enter confirm · y apply · n back")
 }
 
 func statusIcon(s runner.Status, spin string) string {

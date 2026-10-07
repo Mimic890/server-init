@@ -28,9 +28,9 @@ You can also download the archive from the [releases page](https://github.com/Mi
 ## Usage
 
 ```bash
-sudo server-init                         # full interactive setup
+sudo server-init                         # main menu: full setup, custom setup, manage
 sudo server-init --dry-run               # answer the questions, show every change, touch nothing
-sudo server-init --only ssh,ufw          # run selected modules (preflight always runs)
+sudo server-init --only ssh,ufw          # custom setup with these modules preselected (preflight always runs)
 sudo server-init --config answers.yaml   # non-interactive, all answers preset (asks y/N unless --yes)
 sudo server-init --rollback              # restore /etc from the latest backup
 sudo server-init --rollback ssh          # undo one module
@@ -41,7 +41,7 @@ server-init --version
 
 | Flag | Meaning |
 |------|---------|
-| `--only a,b` | Run only these modules (in the fixed apply order). |
+| `--only a,b` | Preselect these modules in the custom setup (they run in the fixed apply order). With `--config`: run only these modules. |
 | `--dry-run` | Show the planned changes with file diffs. Works without root. Nothing is written. |
 | `--config FILE` | Answers from YAML, no questions. See [`docs/answers.example.yaml`](docs/answers.example.yaml). |
 | `--yes` | With `--config`: apply without the y/N confirmation (for automation). |
@@ -53,20 +53,27 @@ next time, so a rerun with the same answers is a no-op.
 
 ## Screens
 
-| Preflight | Questions | Summary |
-|-----------|-----------|---------|
-| ![welcome](docs/img/welcome.png) | ![questions](docs/img/questions.png) | ![summary](docs/img/summary.png) |
+| Questions | Summary |
+|-----------|---------|
+| ![questions](docs/img/questions.png) | ![summary](docs/img/summary.png) |
 
 | SSH login check | Automatic rollback when not confirmed |
 |-----------------|----------------------------------------|
 | ![confirm](docs/img/apply-confirm.png) | ![rollback](docs/img/apply-rollback.png) |
 
-1. **Preflight**: OS, root, systemd, free disk, internet, current SSH port(s), your IP.
-2. **Modules**: all v1 modules are preselected.
-3. **Questions**: one form per module, every question has a default and a one-line explanation.
-4. **Summary**: every planned change, including unified diffs of the files. Default answer: Cancel.
-5. **Apply**: progress per module (spinner / ✓ / ✗) and a scrollable log.
-6. **Report**: SSH port, user, key paths, firewall reminders, rollback commands.
+1. **Main menu**: the server at a glance (hostname, OS, IP, CPU, RAM, disk, uptime, SSH port(s), your IP)
+   and the preflight checks (root, systemd). Then pick what to do:
+   - **Full setup**: all modules, only the essential questions (hostname and timezone, admin user, SSH port
+     and key, web ports, whitelisting your IP). Everything else keeps the recommended answer, and the summary
+     still shows every change.
+   - **Custom setup**: choose the modules and answer every question.
+   - **Manage**: change one part later (SSH, admin user, firewall, fail2ban settings), show the fail2ban
+     status, unban / whitelist / blacklist an IP, close the old SSH port after a `--config` run.
+2. **Questions**: one form per module, every question has a default and a one-line explanation.
+3. **Summary**: every planned change, including unified diffs of the files. Default answer: Cancel
+   (back to the menu).
+4. **Apply**: progress per module (spinner / ✓ / ✗) and a scrollable log.
+5. **Report**: SSH port, user, key paths, firewall reminders, rollback commands.
 
 ## Modules
 

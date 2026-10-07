@@ -71,7 +71,10 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				Title("Enable recidive (repeat offenders, 1 week ban)?").
 				Description("An IP banned 3 times in a day is banned for a whole week.").
 				Value(&a.Recidive),
-		),
+		).WithHideFunc(env.Advanced(nil)),
+	}
+	if env.Quick && client == "" {
+		return nil // nothing essential to ask
 	}
 	if client != "" {
 		groups = append(groups, huh.NewGroup(
@@ -96,7 +99,7 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				a.Whitelist = f
 				return nil
 			}),
-	))
+	).WithHideFunc(env.Advanced(nil)))
 	return groups
 }
 

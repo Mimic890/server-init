@@ -1,6 +1,9 @@
 package facts
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestParseOSRelease(t *testing.T) {
 	id, ver, pretty := ParseOSRelease(`PRETTY_NAME="Ubuntu 24.04.1 LTS"
@@ -30,6 +33,18 @@ func TestSupported(t *testing.T) {
 	for _, c := range cases {
 		if got := Supported(c.id, c.ver); got != c.ok {
 			t.Errorf("Supported(%s, %s) = %v", c.id, c.ver, got)
+		}
+	}
+}
+
+func TestParseUptime(t *testing.T) {
+	for in, want := range map[string]time.Duration{
+		"350735.47 234388.90\n": 350735 * time.Second,
+		"12 3":                  12 * time.Second,
+		"":                      0,
+	} {
+		if got := ParseUptime(in); got != want {
+			t.Errorf("ParseUptime(%q) = %v, want %v", in, got, want)
 		}
 	}
 }

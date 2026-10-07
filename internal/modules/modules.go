@@ -31,7 +31,7 @@ func Registry() *module.Registry {
 }
 
 // Command is a `server-init <name> ...` subcommand.
-type Command func(ctx context.Context, env *module.Env, args []string, out io.Writer) error
+type Command = func(ctx context.Context, env *module.Env, args []string, out io.Writer) error
 
 // Commands returns the subcommands provided by modules.
 func Commands() map[string]Command {

@@ -21,8 +21,8 @@ Show
 Type "server-init --dry-run" Sleep 400ms Enter
 Sleep 3s
 
-# Welcome (preflight) -> module picker
-Enter
+# Main menu: Custom setup -> module picker
+Down Sleep 500ms Enter
 Sleep 2s
 # keep ssh, ufw and fail2ban for the demo: unselect system, cleanup, users, sysctl
 Type "x" Sleep 300ms Down Type "x" Sleep 300ms Down Type "x" Sleep 300ms

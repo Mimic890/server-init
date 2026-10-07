@@ -340,3 +340,25 @@ func chain(a, b func(string) (string, error, bool)) func(string) (string, error,
 		return a(l)
 	}
 }
+
+func TestQuickFormFollowsUsersModule(t *testing.T) {
+	s := newServer(t)
+	env := newEnv(s, &fakePrompt{})
+	env.Quick = true
+	env.Selected = func(id string) bool { return id == "users" }
+	env.Answers.Users.Name = "admin"
+	m := New()
+	m.Form(env)
+	if env.Answers.SSH.User != "" {
+		t.Fatalf("quick form must leave the user to the users module, got %q", env.Answers.SSH.User)
+	}
+	// answered in the users form after the ssh form was built
+	env.Answers.Users.Name = "deploy"
+	p, err := m.Check(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p.String(), "/home/deploy/.ssh/authorized_keys") {
+		t.Fatalf("plan must use the users module admin:\n%s", p.String())
+	}
+}
