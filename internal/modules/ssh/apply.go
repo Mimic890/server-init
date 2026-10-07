@@ -148,7 +148,7 @@ func (m *Module) Apply(ctx context.Context, env *module.Env, _ module.Plan) erro
 	if portChanged {
 		switch {
 		case s.fw == fwUFW && env.Selected("ufw"), (s.fw == fwUFW || s.fw == fwFirewalld) && a.OpenFirewall:
-			if err := openPort(ctx, env, s.fw, s.port); err != nil {
+			if err := openPort(ctx, env, s.fw, s.port, true); err != nil {
 				return rollbackNow(fmt.Sprintf("could not open the port in %s: %v", s.fw, err))
 			}
 			m.res.fwOpened = true
@@ -475,8 +475,39 @@ func (m *Module) Rollback(ctx context.Context, env *module.Env) error {
 	stopWatchdog(ctx, env)
 	err := env.Rollback(ctx)
 	_ = env.Sys.Remove(PendingFile)
+	// The firewall may only allow the new port by now: open the restored
+	// port(s) first, or the rollback itself would lock the user out.
+	if fw := detectFirewall(ctx, env.Sys); fw == fwUFW || fw == fwFirewalld {
+		for _, p := range configuredPorts(ctx, env.Sys) {
+			if oerr := openPort(ctx, env, fw, p, false); oerr != nil {
+				err = errors.Join(err, oerr)
+			}
+		}
+	}
 	if rerr := restartSSHD(ctx, env); rerr != nil {
 		err = errors.Join(err, rerr)
 	}
 	return err
+}
+
+// configuredPorts returns the ports of the sshd configuration on disk.
+func configuredPorts(ctx context.Context, s sys.System) []int {
+	out, err := s.Query(ctx, "sshd", "-T")
+	if err != nil {
+		return []int{22}
+	}
+	var ports []int
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Fields(l)
+		if len(f) == 2 && f[0] == "port" {
+			var p int
+			if _, err := fmt.Sscan(f[1], &p); err == nil && !slices.Contains(ports, p) {
+				ports = append(ports, p)
+			}
+		}
+	}
+	if len(ports) == 0 {
+		return []int{22}
+	}
+	return ports
 }

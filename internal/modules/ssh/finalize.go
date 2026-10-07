@@ -37,3 +37,17 @@ func Command(ctx context.Context, env *module.Env, args []string, out io.Writer)
 	}
 	return env.Sys.Remove(PendingFile)
 }
+
+// PendingPorts returns the old SSH ports that stay open until
+// `server-init ssh finalize` (nil when nothing is pending).
+func PendingPorts(s sys.System) []int {
+	b, err := s.ReadFile(PendingFile)
+	if err != nil {
+		return nil
+	}
+	var p pending
+	if json.Unmarshal(b, &p) != nil {
+		return nil
+	}
+	return p.OldPorts
+}

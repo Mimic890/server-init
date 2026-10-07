@@ -42,8 +42,10 @@ func detectFirewall(ctx context.Context, s sys.System) firewall {
 	return fwNone
 }
 
-// openPort opens port in the active ufw/firewalld and records how to undo it.
-func openPort(ctx context.Context, env *module.Env, fw firewall, port int) error {
+// openPort opens port in the active ufw/firewalld. With record, the undo
+// step is journaled (not during a rollback: a second rollback must never
+// close the restored SSH port).
+func openPort(ctx context.Context, env *module.Env, fw firewall, port int, record bool) error {
 	p := fmt.Sprintf("%d/tcp", port)
 	switch fw {
 	case fwUFW:
@@ -51,6 +53,9 @@ func openPort(ctx context.Context, env *module.Env, fw firewall, port int) error
 			return err
 		}
 		env.Infof("ufw: opened %s", p)
+		if !record {
+			return nil
+		}
 		return env.Undo("close "+p, "ufw", "delete", "allow", p)
 	case fwFirewalld:
 		if _, err := env.Exec(ctx, "firewall-cmd", "--permanent", "--add-port="+p); err != nil {
@@ -60,6 +65,9 @@ func openPort(ctx context.Context, env *module.Env, fw firewall, port int) error
 			return err
 		}
 		env.Infof("firewalld: opened %s", p)
+		if !record {
+			return nil
+		}
 		return env.Undo("close "+p, "firewall-cmd", "--permanent", "--remove-port="+p)
 	}
 	return nil
