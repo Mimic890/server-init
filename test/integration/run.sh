@@ -56,14 +56,18 @@ sx fail2ban-client status server-init-blacklist | grep -q "192.0.2.66" || fail "
 sx server-init f2b status >/dev/null || fail "f2b status"
 
 step "login from a client"
-docker cp "$name:/root/.ssh/server-init_ed25519" /tmp/si-key-$$
+docker cp "$name:/home/admin/.ssh/server-init_ed25519" /tmp/si-key-$$
 chmod 600 /tmp/si-key-$$
-opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=5)
-docker run --rm -v /tmp/si-key-$$:/k:ro "$img" sh -c \
-  "cp /k /tmp/k && chmod 600 /tmp/k && ssh ${opts[*]} -i /tmp/k -p 40022 root@$ip true" || fail "key login"
-docker run --rm "$img" ssh "${opts[@]}" -o PubkeyAuthentication=no -p 40022 "root@$ip" true 2>/dev/null \
+opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=5 -o LogLevel=ERROR)
+client() { docker run --rm -v /tmp/si-key-$$:/k:ro "$img" sh -c "cp /k /tmp/k && chmod 600 /tmp/k && ssh ${opts[*]} -i /tmp/k -p 40022 $*"; }
+client "admin@$ip true" || fail "key login"
+client "admin@$ip sudo -n true" || fail "passwordless sudo"
+[[ $(client "admin@$ip umask") == 0027 ]] || fail "umask is not 027 in an SSH session"
+client "root@$ip true" 2>/dev/null && fail "root login must be refused (AllowUsers admin, PermitRootLogin no)"
+docker run --rm "$img" ssh "${opts[@]}" -o PubkeyAuthentication=no -p 40022 "admin@$ip" true 2>/dev/null \
   && fail "password login must be refused"
 rm -f /tmp/si-key-$$
+sx passwd -S root | grep -q " L " || fail "root password not locked"
 
 step "rerun is a no-op"
 sx server-init --config /root/answers.yaml --yes >/tmp/rerun.out || { cat /tmp/rerun.out; fail "rerun"; }

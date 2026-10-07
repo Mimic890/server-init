@@ -38,10 +38,6 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 	}
 	oldPorts := env.Facts.SSHPorts
 	userExists := func() bool { _, ok := sys.LookupUser(ctx, env.Sys, a.User); return ok }
-	usersModuleCreates := func() bool {
-		u := env.Answers.Users
-		return env.Selected("users") && u.CreateAdmin && u.Name == a.User
-	}
 
 	groups := []*huh.Group{
 		huh.NewGroup(
@@ -90,7 +86,7 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				TitleFunc(func() string { return fmt.Sprintf("Give '%s' sudo rights without password (NOPASSWD)?", a.User) }, &a.User).
 				Description("The user is created without a password, so sudo only works without one.").
 				Value(&a.GrantSudo),
-		).WithHideFunc(func() bool { return a.User == "root" || usersModuleCreates() || userExists() }),
+		).WithHideFunc(func() bool { return a.User == "root" || usersModuleCreates(env, a.User) || userExists() }),
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("SSH key").

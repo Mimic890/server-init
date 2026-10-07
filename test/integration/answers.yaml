@@ -1,8 +1,13 @@
 # Answers for the integration test (non-interactive run).
-modules: [ssh, ufw, fail2ban]
+modules: [users, ssh, ufw, fail2ban]
+users:
+  create_admin: true
+  name: admin
+  sudo_nopasswd: true
+  lock_root_password: true
+  umask_027: true
 ssh:
   port: 40022
-  user: root
   key_mode: generate
 ufw:
   allow_https: true
