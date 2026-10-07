@@ -1,5 +1,5 @@
 # Answers for the integration test (non-interactive run).
-modules: [system, users, ssh, ufw, fail2ban]
+modules: [system, cleanup, users, ssh, ufw, fail2ban]
 system:
   upgrade: false            # keeps the test fast
   timezone: Europe/Berlin
@@ -7,6 +7,9 @@ system:
   auto_reboot: true
   auto_reboot_time: "03:30"
   packages: [curl, jq, btop, zellij]
+cleanup:
+  remove_popularity_contest: true
+  journald_max_use: 150M
 users:
   create_admin: true
   name: admin
