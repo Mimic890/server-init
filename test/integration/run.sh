@@ -52,6 +52,9 @@ origins=$(sx unattended-upgrade --dry-run -d 2>&1 | sed -n 's/^Allowed origins a
 IFS=';' read -ra items <<<"${origins//, /;}"
 for o in "${items[@]}"; do [[ $o == *ecurity* ]] || fail "non-security origin enabled: $o"; done
 
+step "cleanup"
+sx systemd-analyze cat-config systemd/journald.conf | grep -qx "SystemMaxUse=150M" || fail "journald limit"
+
 step "firewall"
 sx ufw status | grep -q "Status: active" || fail "ufw not active"
 sx ufw status | grep -q "40022/tcp *LIMIT" || fail "SSH rule missing"

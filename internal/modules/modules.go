@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/mimic890/server-init/internal/module"
+	"github.com/mimic890/server-init/internal/modules/cleanup"
 	"github.com/mimic890/server-init/internal/modules/fail2ban"
 	"github.com/mimic890/server-init/internal/modules/preflight"
 	"github.com/mimic890/server-init/internal/modules/ssh"
@@ -19,6 +20,7 @@ func Registry() *module.Registry {
 	return module.NewRegistry(
 		preflight.New(),
 		system.New(),
+		cleanup.New(),
 		users.New(),
 		ssh.New(),
 		ufw.New(),

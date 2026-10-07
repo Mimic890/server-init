@@ -1,0 +1,4 @@
+# Managed by server-init: never install snapd again
+Package: snapd
+Pin: release a=*
+Pin-Priority: -10
