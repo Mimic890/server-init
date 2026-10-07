@@ -10,9 +10,16 @@ RUN if [ -n "$APT_MIRROR" ] && [ -f /etc/apt/sources.list.d/ubuntu.sources ]; th
       sed -i -E "s#https?://(archive|security)\.ubuntu\.com/ubuntu/?#${APT_MIRROR}#g" /etc/apt/sources.list.d/ubuntu.sources; \
     fi \
  && printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\n' > /etc/apt/apt.conf.d/80-ci-retries
-RUN apt-get update -q \
+# The packages server-init installs during the test are only downloaded
+# here (not installed), so the test still runs the install path but does
+# not wait for the mirror: the image layer is cached between CI runs.
+# docker-clean would delete the downloaded .deb files on the next apt run.
+RUN rm -f /etc/apt/apt.conf.d/docker-clean \
+ && apt-get update -q \
  && apt-get install -y -q --no-install-recommends systemd systemd-sysv dbus openssh-server openssh-client \
       iproute2 sudo ca-certificates procps iptables \
+ && apt-get install -y -q --no-install-recommends --download-only \
+      unattended-upgrades locales tzdata curl jq btop ufw fail2ban python3-systemd \
  && rm -rf /var/lib/apt/lists/* \
  && rm -f /etc/systemd/system/multi-user.target.wants/getty* \
  && systemctl enable ssh
