@@ -1,0 +1,21 @@
+# BEGIN UFW AND DOCKER
+*filter
+:ufw6-user-forward - [0:0]
+:ufw6-docker-logging-deny - [0:0]
+:DOCKER-USER - [0:0]
+-A DOCKER-USER -j ufw6-user-forward
+
+-A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+-A DOCKER-USER -m conntrack --ctstate INVALID -j DROP
+-A DOCKER-USER -i docker0 -o docker0 -j ACCEPT
+
+-A DOCKER-USER -j RETURN -s fd00::/8
+-A DOCKER-USER -j ufw6-docker-logging-deny -m conntrack --ctstate NEW -d fd00::/8
+
+-A DOCKER-USER -j RETURN
+
+-A ufw6-docker-logging-deny -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix "[UFW DOCKER BLOCK] "
+-A ufw6-docker-logging-deny -j DROP
+
+COMMIT
+# END UFW AND DOCKER

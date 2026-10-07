@@ -1,0 +1,72 @@
+# server-init answers - use with: sudo server-init --config answers.yaml [--yes]
+# Keys you leave out keep their default. Unknown keys are an error.
+# After every run the answers are saved to /etc/server-init/answers.yaml.
+
+# Modules to run (apply order is fixed; preflight always runs).
+modules: [system, cleanup, users, ssh, ufw, fail2ban, sysctl]
+
+system:
+  upgrade: true                 # apt update + full-upgrade
+  hostname: web1                # empty = keep the current one
+  timezone: Etc/UTC             # empty = keep the current one
+  locale: C.UTF-8               # empty = keep the current one
+  ntp: true                     # systemd-timesyncd
+  unattended_upgrades: true     # security updates only
+  auto_reboot: false            # reboot when an update requires it ...
+  auto_reboot_time: "04:00"     # ... at this time
+  packages: [curl, git, htop, jq, unzip, ncdu]   # also: btop neovim fish zellij
+
+cleanup:
+  remove_snapd: false
+  remove_cloud_init: false
+  remove_popularity_contest: false
+  disable_motd_news: true       # Ubuntu MOTD news/ads
+  autoremove: true              # apt autoremove --purge, apt clean
+  journald_max_use: 200M        # empty = journald default
+
+users:
+  create_admin: true            # false = keep root as the only admin (key-only)
+  name: admin
+  sudo_nopasswd: true           # false needs password_hash (e.g. from: openssl passwd -6)
+  # password_hash: "$6$..."
+  extra_groups: []              # docker, adm, systemd-journal
+  lock_root_password: true
+  umask_027: true
+
+ssh:
+  port: 40022                   # 0 = random free port
+  user: ""                      # empty = users.name (or root)
+  grant_sudo: false             # NOPASSWD sudo when ssh creates the user itself
+  key_mode: paste               # paste | generate
+  public_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleExampleExampleExampleExampleExample me@laptop
+  passphrase: false             # generate only; needs the interactive mode
+  key_keep: show                # generate only: show (once, then delete) | keep
+  allow_only_user: true         # AllowUsers <user>
+  max_auth_tries: 3
+  login_grace_time: 30
+  client_alive: true            # ClientAliveInterval 300 / CountMax 2
+  x11_forwarding: false
+  tcp_forwarding: "no"          # no | local | yes
+  agent_forwarding: false
+  banner: ""                    # login banner text, empty = none
+  open_firewall: true           # open the port in an active ufw/firewalld
+
+ufw:
+  allow_http: false
+  allow_https: false
+  trusted_interfaces: []        # e.g. [tailscale0, wg0]
+  docker_fix: true              # DOCKER-USER rules so Docker cannot bypass ufw
+
+fail2ban:
+  maxretry: 3
+  findtime: 10m
+  bantime: 1h                   # -1 = permanent
+  recidive: true
+  whitelist_client_ip: true     # the IP of the SSH session running server-init
+  whitelist: []                 # IPs / CIDRs
+
+sysctl:
+  bbr: true
+  hardening: true
+  swap_size: 2G                 # "" or "0" = no swap file; skipped when swap exists
+  swappiness: 10

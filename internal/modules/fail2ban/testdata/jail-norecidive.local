@@ -1,0 +1,23 @@
+# Managed by server-init
+[sshd]
+enabled = true
+port = 22,40022
+filter = sshd[mode=aggressive]
+backend = systemd
+journalmatch = _SYSTEMD_UNIT=ssh.service + _SYSTEMD_UNIT=sshd.service
+maxretry = 5
+findtime = 1h
+bantime = -1
+
+[server-init-blacklist]
+enabled = true
+filter = server-init-blacklist
+logpath = /var/log/server-init-blacklist.log
+backend = polling
+maxretry = 1
+findtime = 1d
+bantime = -1
+banaction = %(banaction_allports)s
+
+[recidive]
+enabled = false
