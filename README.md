@@ -148,6 +148,7 @@ Every file is backed up before it is changed.
 | `/etc/ssh/sshd_config`, other `sshd_config.d/*.conf` | ssh | Active `Port` lines commented out |
 | `/etc/sudoers.d/90-server-init-<user>` | users, ssh | sudo for the admin user |
 | `/etc/login.defs` | users | `UMASK 027` (no drop-in exists) |
+| `/usr/share/pam-configs/server-init-umask` | users | Enables `pam_umask` via `pam-auth-update` where it is missing (Debian) |
 | `/etc/ufw/after.rules`, `after6.rules` | ufw | DOCKER-USER block (no drop-in exists) |
 | `/etc/fail2ban/jail.d/server-init.local`, `server-init-whitelist.local` | fail2ban | Jails and whitelist |
 | `/etc/fail2ban/fail2ban.d/server-init.local` | fail2ban | `dbpurgeage` for permanent bans |
