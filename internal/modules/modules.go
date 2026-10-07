@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/mimic890/server-init/internal/module"
+	"github.com/mimic890/server-init/internal/modules/fail2ban"
 	"github.com/mimic890/server-init/internal/modules/preflight"
 	"github.com/mimic890/server-init/internal/modules/ssh"
 	"github.com/mimic890/server-init/internal/modules/ufw"
@@ -17,6 +18,7 @@ func Registry() *module.Registry {
 		preflight.New(),
 		ssh.New(),
 		ufw.New(),
+		fail2ban.New(),
 	)
 }
 
@@ -27,5 +29,6 @@ type Command func(ctx context.Context, env *module.Env, args []string, out io.Wr
 func Commands() map[string]Command {
 	return map[string]Command{
 		"ssh": ssh.Command,
+		"f2b": fail2ban.Command,
 	}
 }
