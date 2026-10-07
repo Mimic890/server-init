@@ -96,7 +96,7 @@ func TestMenuServerInfo(t *testing.T) {
 	a.screen = scrMenu
 	v := a.View().Content
 	for _, want := range []string{"web1", "Debian 12", "203.0.113.5", "2 vCPU", "RAM 4.0 GB", "of 40.0 GB", "up 2d 2h", "SSH port 22",
-		"Full setup", "Custom setup", "Manage"} {
+		"Full setup", "Custom setup", "Security audit", "Malware scan", "Manage"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("menu misses %q:\n%s", want, v)
 		}
@@ -137,7 +137,7 @@ func TestManageAction(t *testing.T) {
 		return nil
 	}}
 	a.screen = scrMenu
-	a.menu.cur = 2
+	a.menu.cur = 4
 	a.Update(key("enter"))
 	if a.screen != scrManage {
 		t.Fatal("manage menu not opened")
@@ -281,4 +281,40 @@ func runBatch(cmd tea.Cmd) []tea.Msg {
 		return out
 	}
 	return []tea.Msg{msg}
+}
+
+func TestAuditFromMenu(t *testing.T) {
+	a := testApp(t, okFacts())
+	a.screen = scrMenu
+	a.menu.cur = 2
+	_, cmd := a.Update(key("enter"))
+	if a.screen != scrAction || a.act == nil || !a.act.report {
+		t.Fatal("audit not started")
+	}
+	for _, msg := range runBatch(cmd) {
+		if _, ok := msg.(actionDoneMsg); ok {
+			a.Update(msg)
+		}
+	}
+	if !a.act.done || !strings.Contains(a.vp.GetContent(), "Security audit") {
+		t.Fatalf("report not shown:\n%s", a.vp.GetContent())
+	}
+	a.Update(key("esc"))
+	if a.screen != scrMenu {
+		t.Fatal("esc after the audit must return to the main menu")
+	}
+}
+
+func TestScanAsksDepth(t *testing.T) {
+	a := testApp(t, okFacts())
+	a.screen = scrMenu
+	a.menu.cur = 3
+	a.Update(key("enter"))
+	if a.screen != scrAction || a.act.form == nil || !strings.Contains(a.View().Content, "Built-in checks") {
+		t.Fatalf("scan depth form not shown:\n%s", a.View().Content)
+	}
+	a.Update(key("esc"))
+	if a.screen != scrMenu {
+		t.Fatal("esc in the scan form must return to the main menu")
+	}
 }

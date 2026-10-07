@@ -1,7 +1,7 @@
 # server-init
 
-Initial setup and hardening of a fresh **Debian 12+ / Ubuntu 24.04+** server in one terminal UI.
-You answer a few questions, read every planned change, confirm, and watch it being applied.
+Initial setup, hardening, security audit and malware scan for **Debian 12+ / Ubuntu 24.04+** servers in one
+terminal UI. You answer a few questions, read every planned change, confirm, and watch it being applied.
 
 - Single static binary (linux amd64), no runtime dependencies, runs as root
 - Nothing changes before you confirm the summary (the default answer is **No**)
@@ -35,6 +35,9 @@ sudo server-init --config answers.yaml   # non-interactive, all answers preset (
 sudo server-init --rollback              # restore /etc from the latest backup
 sudo server-init --rollback ssh          # undo one module
 sudo server-init ssh finalize            # close the old SSH port after a --config run (see below)
+sudo server-init audit                   # security audit, changes nothing (exit code 1 when it finds problems)
+sudo server-init scan                    # malware scan with the built-in checks
+sudo server-init scan --clamav           # ... plus ClamAV (installs clamav, ~300 MB of signatures, ~1 GB RAM)
 sudo server-init f2b status              # fail2ban management, see below
 server-init --version
 ```
@@ -67,6 +70,8 @@ next time, so a rerun with the same answers is a no-op.
      and key, web ports, whitelisting your IP). Everything else keeps the recommended answer, and the summary
      still shows every change.
    - **Custom setup**: choose the modules and answer every question.
+   - **Security audit**: read-only report with a score, see [Security audit](#security-audit).
+   - **Malware scan**: see [Malware scan](#malware-scan).
    - **Manage**: change one part later (SSH, admin user, firewall, fail2ban settings), show the fail2ban
      status, unban / whitelist / blacklist an IP, close the old SSH port after a `--config` run.
 2. **Questions**: one form per module, every question has a default and a one-line explanation.
@@ -74,6 +79,46 @@ next time, so a rerun with the same answers is a no-op.
    (back to the menu).
 4. **Apply**: progress per module (spinner / ✓ / ✗) and a scrollable log.
 5. **Report**: SSH port, user, key paths, firewall reminders, rollback commands.
+
+## Security audit
+
+`server-init audit` (or **Security audit** in the menu) only reads. Every finding is ✓ ok, • info, ! warning
+or ✗ problem, with a hint how to fix it, and the report ends in a score (ok = 1, warning = ½, problem = 0).
+
+| Area | Checks |
+|------|--------|
+| SSH (`sshd -T`) | root login, password / keyboard-interactive / empty-password login, port, MaxAuthTries and LoginGraceTime, X11 forwarding, weak ciphers / MACs / key exchanges, AllowUsers |
+| Accounts | extra UID 0 accounts, accounts with an empty password, usable root password, login shells, `NOPASSWD` sudo rules |
+| Network | every service on a public address; databases and admin services (MySQL, PostgreSQL, Redis, MongoDB, Elasticsearch, Docker API, ...) reachable from outside, also through Docker-published ports that bypass ufw |
+| Firewall and fail2ban | ufw / nftables / iptables with a dropping input policy, Docker bypassing ufw, fail2ban with an sshd jail |
+| Updates | unattended-upgrades enabled, pending (security) updates, pending reboot, clock synchronization |
+| Kernel | syncookies, ICMP redirects, source routing, reverse path filter, ASLR, protected links |
+| Files | permissions of shadow / passwd / sudoers / sshd_config, world-writable system files, SUID programs that do not come from a package |
+| Web server | nginx / Apache version banners, directory listing, old TLS versions, expiry of the HTTPS certificate on port 443 |
+
+## Malware scan
+
+`server-init scan` (or **Malware scan** in the menu) looks for what is typically found on hacked Linux
+servers: crypto miners, droppers and backdoors. The built-in checks only read:
+
+- processes: known miner and botnet names, stratum pool arguments, programs running from `/tmp`, `/var/tmp`,
+  `/dev/shm`, from memory (`memfd`) or from a deleted file, long-running high CPU load;
+- connections to the usual mining pool ports;
+- autostart: cron jobs, systemd units and timers, `rc.local`, shell startup files: downloads piped into a
+  shell, base64-hidden code, reverse shells, programs started from temp directories;
+- `/etc/ld.so.preload` and known kernel rootkit modules;
+- SSH keys of root and all users (listed for review, `authorized_keys2`, DSA keys, suspicious `command=`);
+- compiled programs in temp directories;
+- `dpkg --verify`: programs and libraries that differ from their package (diverted files are ignored).
+
+`--clamav` (or the second option in the menu) also installs `clamav` and `clamav-freshclam`, waits for the
+virus signatures (about 300 MB) and scans `/root`, `/home`, `/tmp`, `/var/tmp`, `/dev/shm`, `/var/www`, `/srv`,
+`/opt`, `/usr/local`, `/etc` and `/var/spool/cron`. ClamAV needs about 1 GB of free memory (RAM + swap); on
+smaller servers it is skipped. rkhunter and chkrootkit are not used: rkhunter has not been released since
+2018 and both report many false positives.
+
+A clean scan is not a guarantee. If a server was compromised, the only safe fix is to reinstall it and
+restore data from a backup.
 
 ## Modules
 
@@ -217,10 +262,13 @@ The integration test runs the full set of modules with
 - an SSH login with the generated key works, password and root logins are refused;
 - `sudo` works and the umask is 027 in an SSH session;
 - ufw, fail2ban (including the CLI), sysctl and unattended-upgrades are set up as configured;
+- `server-init audit` finds no problems after the setup;
+- `server-init scan` is clean, and reports a planted malicious cron job;
 - a rerun reports "Everything is already applied";
 - the module rollbacks and the global rollback work.
 
-CI runs it on Debian 12 and Ubuntu 24.04.
+CI runs it on Debian 12 and Ubuntu 24.04. The test image is cached between runs, and on CI the Ubuntu image
+uses the Azure package mirror of the GitHub runners (`--build-arg APT_MIRROR=http://azure.archive.ubuntu.com/ubuntu/`).
 
 Layout:
 
@@ -231,6 +279,9 @@ internal/state/        backups, /etc snapshot, per-module journal
 internal/module/       Module interface, Plan, Env, registry
 internal/modules/<x>/  one package per module
 internal/runner/       prepare -> check -> apply with progress events
+internal/audit/        security audit (read-only)
+internal/scan/         malware scan, optional ClamAV
+internal/check/        findings, score and report rendering shared by audit and scan
 internal/tui/          Bubble Tea screens, plain mode for --config
 internal/config/       answers, defaults, YAML
 internal/facts/        preflight facts

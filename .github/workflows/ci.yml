@@ -42,6 +42,7 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -52,5 +53,18 @@ jobs:
         with:
           go-version-file: go.mod
       - run: CGO_ENABLED=0 go build -trimpath -o server-init ./cmd/server-init
-      - run: docker build -t si-test --build-arg BASE=${{ matrix.base }} test/integration
+      - uses: docker/setup-buildx-action@v4
+      # the test image is cached between runs; it only changes with the
+      # Dockerfile or the base image
+      - uses: docker/build-push-action@v7
+        with:
+          context: test/integration
+          load: true
+          tags: si-test
+          build-args: |
+            BASE=${{ matrix.base }}
+            APT_MIRROR=http://azure.archive.ubuntu.com/ubuntu/
+          cache-from: type=gha,scope=${{ matrix.base }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.base }}
       - run: test/integration/run.sh si-test ./server-init
+        timeout-minutes: 15
