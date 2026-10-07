@@ -8,6 +8,7 @@ import (
 	"github.com/mimic890/server-init/internal/module"
 	"github.com/mimic890/server-init/internal/modules/preflight"
 	"github.com/mimic890/server-init/internal/modules/ssh"
+	"github.com/mimic890/server-init/internal/modules/ufw"
 )
 
 // Registry returns every module in apply order.
@@ -15,6 +16,7 @@ func Registry() *module.Registry {
 	return module.NewRegistry(
 		preflight.New(),
 		ssh.New(),
+		ufw.New(),
 	)
 }
 

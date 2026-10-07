@@ -1,6 +1,9 @@
 # Answers for the integration test (non-interactive run).
-modules: [ssh]
+modules: [ssh, ufw]
 ssh:
   port: 40022
   user: root
   key_mode: generate
+ufw:
+  allow_https: true
+  docker_fix: true
