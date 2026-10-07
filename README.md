@@ -3,7 +3,7 @@
 Initial setup and hardening of a fresh **Debian 12+ / Ubuntu 24.04+** server in one terminal UI.
 You answer a few questions, read every planned change, confirm, and watch it being applied.
 
-- Single static binary (linux amd64/arm64), no runtime dependencies, runs as root
+- Single static binary (linux amd64), no runtime dependencies, runs as root
 - Nothing changes before you confirm the summary (the default answer is **No**)
 - SSH and the firewall are changed in a way that cannot lock you out
 - Idempotent: running it again changes nothing that is already in place

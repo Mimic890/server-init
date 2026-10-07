@@ -19,8 +19,7 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 [ "$(uname -s)" = Linux ] || die "server-init runs on Linux only"
 case "$(uname -m)" in
     x86_64 | amd64) arch=amd64 ;;
-    aarch64 | arm64) arch=arm64 ;;
-    *) die "unsupported architecture: $(uname -m)" ;;
+    *) die "unsupported architecture: $(uname -m) (only x86_64 builds are published)" ;;
 esac
 
 if command -v curl >/dev/null 2>&1; then
