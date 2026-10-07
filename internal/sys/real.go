@@ -163,7 +163,15 @@ func (r *Real) WriteFile(path string, data []byte, perm fs.FileMode) error {
 	if uid >= 0 && !r.SkipChown {
 		_ = os.Chown(tmp.Name(), uid, gid)
 	}
-	return os.Rename(tmp.Name(), full)
+	if err := os.Rename(tmp.Name(), full); err != nil {
+		// Bind-mounted files (e.g. /etc/hosts in containers) cannot be
+		// replaced; write them in place instead.
+		if errors.Is(err, syscall.EBUSY) || errors.Is(err, syscall.EXDEV) {
+			return os.WriteFile(full, data, perm)
+		}
+		return err
+	}
+	return nil
 }
 
 func (r *Real) Remove(path string) error {
