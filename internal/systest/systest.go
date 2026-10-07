@@ -28,6 +28,8 @@ type Host struct {
 	Responses map[string]string
 	// Tools that LookPath finds.
 	Tools map[string]bool
+	// Hook, when set, answers commands first (handled=true).
+	Hook func(line string) (out string, err error, handled bool)
 }
 
 // New returns a fake host rooted in a temp directory.
@@ -52,6 +54,14 @@ func (h *Host) exec(_ context.Context, c sys.Cmd) (string, error) {
 	line := c.String()
 	h.mu.Lock()
 	h.Cmds = append(h.Cmds, line)
+	hook := h.Hook
+	h.mu.Unlock()
+	if hook != nil {
+		if out, err, ok := hook(line); ok {
+			return out, err
+		}
+	}
+	h.mu.Lock()
 	best := ""
 	for k := range h.Responses {
 		if strings.HasPrefix(line, k) && len(k) > len(best) {
@@ -116,4 +126,17 @@ func (h *Host) Reset() {
 	h.mu.Lock()
 	h.Cmds = nil
 	h.mu.Unlock()
+}
+
+// Count returns how many commands started with prefix.
+func (h *Host) Count(prefix string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	n := 0
+	for _, c := range h.Cmds {
+		if strings.HasPrefix(c, prefix) {
+			n++
+		}
+	}
+	return n
 }

@@ -216,6 +216,7 @@ func RestoreLatestBackup(ctx context.Context, env *module.Env) error {
 	if err := sys.DaemonReload(ctx, s); err != nil {
 		errs = append(errs, err)
 	}
+	_, _ = s.Run(ctx, sys.Command("systemctl", "reset-failed", "ssh.service", "ssh.socket"))
 	if sys.UnitActive(ctx, s, "ssh.socket") {
 		errs = append(errs, sys.Systemctl(ctx, s, "restart", "ssh.socket"))
 	}

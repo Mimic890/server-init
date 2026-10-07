@@ -122,6 +122,8 @@ func New(ctx context.Context, opts Options) *App {
 		width:  100,
 		height: 30,
 	}
+	a.vp.SoftWrap = true
+	a.logVP.SoftWrap = true
 	for _, m := range opts.Registry.All() {
 		if module.IsRequired(m) {
 			continue
@@ -273,7 +275,9 @@ func (a *App) startPicker() tea.Cmd {
 			Title("Modules to run").
 			Description("space toggles, enter continues. Modules always run in a safe order.").
 			Options(opts...).
-			Value(&a.selected),
+			Value(&a.selected).
+			// huh v2.0.3 sizes a MultiSelect without counting the description
+			Height(len(opts) + 4),
 	)).WithTheme(formTheme()).WithShowHelp(true)
 	a.screen = scrPicker
 	return a.picker.Init()
