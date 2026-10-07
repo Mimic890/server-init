@@ -50,3 +50,14 @@ func TestRoundTrip(t *testing.T) {
 		t.Fatalf("port = %d", back.SSH.Port)
 	}
 }
+
+// The documented example must stay loadable.
+func TestExampleFile(t *testing.T) {
+	a, err := Load("../../docs/answers.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.SSH.Port != 40022 || len(a.Modules) != 7 || a.Sysctl.SwapSize != "2G" {
+		t.Fatalf("unexpected values: %+v", a)
+	}
+}
