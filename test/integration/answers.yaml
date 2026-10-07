@@ -1,0 +1,31 @@
+# Answers for the integration test (non-interactive run).
+modules: [system, cleanup, users, ssh, ufw, fail2ban, sysctl]
+system:
+  upgrade: false            # keeps the test fast
+  timezone: Europe/Berlin
+  locale: en_US.UTF-8
+  auto_reboot: true
+  auto_reboot_time: "03:30"
+  packages: [curl, jq, btop, zellij]
+cleanup:
+  remove_popularity_contest: true
+  journald_max_use: 150M
+users:
+  create_admin: true
+  name: admin
+  sudo_nopasswd: true
+  lock_root_password: true
+  umask_027: true
+ssh:
+  port: 40022
+  key_mode: generate
+ufw:
+  allow_https: true
+  docker_fix: true
+fail2ban:
+  whitelist: [198.51.100.0/24]
+sysctl:
+  bbr: true
+  hardening: true
+  swap_size: "0"           # overlayfs in the test container cannot hold a swap file
+  swappiness: 10
