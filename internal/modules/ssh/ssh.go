@@ -186,7 +186,7 @@ func (m *Module) Check(ctx context.Context, env *module.Env) (module.Plan, error
 	if a.Banner != "" {
 		p.PlanFile(env.Sys, BannerFile, a.Banner+"\n", 0o644, "login banner "+BannerFile)
 	}
-	if s.create {
+	if s.create && !usersModuleCreates(env, s.user) {
 		p.Add(module.KindUser, s.user, "create user %s (no password, key login only)", s.user)
 		if a.GrantSudo {
 			p.Add(module.KindFile, shared.SudoersFile(s.user), "passwordless sudo for %s (%s)", s.user, shared.SudoersFile(s.user))
@@ -280,4 +280,11 @@ func (m *Module) Report(env *module.Env) []module.ReportLine {
 	lines = append(lines, module.ReportLine{Label: "Provider firewall", Warn: true,
 		Value: fmt.Sprintf("if your hosting provider has a firewall / security group, open TCP %d there too", a.Port)})
 	return lines
+}
+
+// usersModuleCreates reports whether the users module (which runs first)
+// creates the login user.
+func usersModuleCreates(env *module.Env, user string) bool {
+	u := env.Answers.Users
+	return env.Selected("users") && u.CreateAdmin && u.Name == user
 }

@@ -10,12 +10,14 @@ import (
 	"github.com/mimic890/server-init/internal/modules/preflight"
 	"github.com/mimic890/server-init/internal/modules/ssh"
 	"github.com/mimic890/server-init/internal/modules/ufw"
+	"github.com/mimic890/server-init/internal/modules/users"
 )
 
 // Registry returns every module in apply order.
 func Registry() *module.Registry {
 	return module.NewRegistry(
 		preflight.New(),
+		users.New(),
 		ssh.New(),
 		ufw.New(),
 		fail2ban.New(),
