@@ -240,8 +240,8 @@ func (a *App) viewApply() string {
 	for _, m := range a.runner.Modules {
 		st := a.status[m.ID()]
 		name := m.Name()
-		if st == runner.Unchanged {
-			name = sDim.Render(name + " (no change)")
+		if st == runner.Unchanged || st == runner.NotRun {
+			name = sDim.Render(name)
 		}
 		fmt.Fprintf(&list, "%s %s\n", statusIcon(st, a.spin.View()), name)
 	}
@@ -253,7 +253,7 @@ func (a *App) viewApply() string {
 	} else {
 		main = lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 	}
-	foot := sHelp.Render("↑/↓ scroll log · G follow")
+	foot := sHelp.Render("↑/↓ scroll log · G follow · " + iconOK + " done  • no change  " + iconFail + " failed")
 	if a.applied {
 		if a.runErr != nil {
 			foot = sErr.Render("Failed: "+a.runErr.Error()) + "\n" + sHelp.Render("enter report · q quit")

@@ -69,7 +69,7 @@ func (m *Module) Apply(ctx context.Context, env *module.Env, _ module.Plan) erro
 		return err
 	}
 	rollbackNow := func(reason string) error {
-		env.Log.Error("rolling back SSH configuration: " + reason)
+		env.Warnf("rolling back the SSH configuration")
 		if _, err := env.Exec(ctx, "bash", RollbackScript); err != nil {
 			env.Warnf("rollback script failed: %v", err)
 		}

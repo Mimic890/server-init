@@ -539,9 +539,11 @@ func (a *App) layout() {
 	h := max(a.height-6, 5)
 	a.vp.SetWidth(a.width)
 	a.vp.SetHeight(h)
-	lw := a.width - listWidth - 3
+	// left box: listWidth incl. padding + 2 border; gap 1; right box: content
+	// + 2 padding + 2 border
+	lw := a.width - (listWidth + 2) - 1 - 4
 	if a.width < 80 {
-		lw = a.width
+		lw = a.width - 4
 		h = max(a.height-len(a.runner.Modules)-8, 5)
 	}
 	a.logVP.SetWidth(max(lw, 20))
@@ -551,4 +553,4 @@ func (a *App) layout() {
 	}
 }
 
-const listWidth = 26
+const listWidth = 28
