@@ -10,6 +10,7 @@ import (
 	"github.com/mimic890/server-init/internal/modules/fail2ban"
 	"github.com/mimic890/server-init/internal/modules/preflight"
 	"github.com/mimic890/server-init/internal/modules/ssh"
+	"github.com/mimic890/server-init/internal/modules/sysctl"
 	"github.com/mimic890/server-init/internal/modules/system"
 	"github.com/mimic890/server-init/internal/modules/ufw"
 	"github.com/mimic890/server-init/internal/modules/users"
@@ -25,6 +26,7 @@ func Registry() *module.Registry {
 		ssh.New(),
 		ufw.New(),
 		fail2ban.New(),
+		sysctl.New(),
 	)
 }
 
