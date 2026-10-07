@@ -74,12 +74,19 @@ sx fail2ban-client status server-init-blacklist | has "192.0.2.66" || fail "blac
 sx server-init f2b status >/dev/null || fail "f2b status"
 
 step "sysctl"
-[[ $(sx sysctl -n net.ipv4.tcp_congestion_control) == bbr ]] || fail "bbr"
+# BBR is only set when the kernel offers it (CI kernels may not ship tcp_bbr)
+if sx grep -qw bbr /proc/sys/net/ipv4/tcp_available_congestion_control; then
+  [[ $(sx sysctl -n net.ipv4.tcp_congestion_control) == bbr ]] || fail "bbr"
+else
+  sx grep -q tcp_congestion_control /etc/sysctl.d/99-server-init.conf && fail "bbr configured without kernel support"
+fi
 # net.core.default_qdisc only exists in the host's network namespace
 if sx test -e /proc/sys/net/core/default_qdisc; then
   [[ $(sx sysctl -n net.core.default_qdisc) == fq ]] || fail "fq"
 fi
-sx grep -qx "net.core.default_qdisc = fq" /etc/sysctl.d/99-server-init.conf || fail "fq not configured"
+if sx grep -qw bbr /proc/sys/net/ipv4/tcp_available_congestion_control; then
+  sx grep -qx "net.core.default_qdisc = fq" /etc/sysctl.d/99-server-init.conf || fail "fq not configured"
+fi
 [[ $(sx sysctl -n net.ipv4.conf.all.accept_redirects) == 0 ]] || fail "redirects"
 [[ $(sx sysctl -n net.ipv4.tcp_syncookies) == 1 ]] || fail "syncookies"
 [[ $(sx sysctl -n vm.swappiness) == 10 ]] || fail "swappiness"
