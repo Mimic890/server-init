@@ -49,9 +49,6 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// subcommands are added by modules (f2b, ssh).
-var subcommands = map[string]func(ctx context.Context, env *module.Env, args []string, out io.Writer) error{}
-
 func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("server-init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -123,7 +120,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	reg := modules.Registry()
 
 	if sub != "" {
-		fn, ok := subcommands[sub]
+		fn, ok := modules.Commands()[sub]
 		if !ok {
 			_, _ = fmt.Fprintf(stderr, "unknown command %q\n\n", sub)
 			fs.Usage()

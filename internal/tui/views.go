@@ -158,7 +158,7 @@ func renderPlans(mods []module.Module, plans []module.Plan) string {
 			name = mods[i].Name()
 		}
 		state := ""
-		if p.Empty() {
+		if p.Empty() && len(p.Changes) == 0 {
 			state = sDim.Render("  already applied")
 		}
 		b.WriteString(sHeader.Render("▸ "+name) + state + "\n")
@@ -167,10 +167,10 @@ func renderPlans(mods []module.Module, plans []module.Plan) string {
 		}
 		for _, c := range p.Changes {
 			line := "  • " + c.Summary
-			if c.Risky {
+			switch {
+			case c.Risky:
 				line = sWarn.Render("  ★ " + c.Summary)
-			}
-			if c.Kind == module.KindInfo {
+			case c.Kind == module.KindInfo:
 				line = sDim.Render("  " + c.Summary)
 			}
 			b.WriteString(line + "\n")

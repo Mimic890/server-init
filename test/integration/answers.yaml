@@ -1,0 +1,6 @@
+# Answers for the integration test (non-interactive run).
+modules: [ssh]
+ssh:
+  port: 40022
+  user: root
+  key_mode: generate

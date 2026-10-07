@@ -126,7 +126,7 @@ func (p Plan) String() string {
 	for _, n := range p.Notes {
 		fmt.Fprintf(&b, "  ! %s\n", n)
 	}
-	if p.Empty() {
+	if p.Empty() && len(p.Changes) == 0 {
 		b.WriteString("  already applied, nothing to do\n")
 	}
 	for _, c := range p.Changes {
