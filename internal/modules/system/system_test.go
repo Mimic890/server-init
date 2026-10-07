@@ -59,6 +59,7 @@ func setup(t *testing.T) (*systest.Host, *module.Env) {
 	h.Write("/etc/hostname", "old\n")
 	h.Write("/etc/hosts", "127.0.0.1 localhost\n127.0.1.1 old\n")
 	h.Write("/etc/default/locale", "LANG=C.UTF-8\n")
+	h.Write("/var/lib/apt/lists/archive_noble_main_binary-amd64_Packages", "")
 	h.Write("/usr/share/zoneinfo/Europe/Berlin", "TZif")
 	h.Write("/usr/share/zoneinfo/Etc/UTC", "TZif")
 	h.On("timedatectl show -p Timezone --value", "Etc/UTC\n")
@@ -155,5 +156,15 @@ func TestValidation(t *testing.T) {
 	env.Answers.System.Hostname = "Bad_Name"
 	if _, err := New().Check(context.Background(), env); err == nil {
 		t.Fatal("bad hostname accepted")
+	}
+}
+
+func TestEmptyAptListsPlansInstall(t *testing.T) {
+	h, env := setup(t)
+	_ = h.RemoveAll("/var/lib/apt/lists")
+	h.On("apt-cache policy", "")
+	p, err := New().Check(context.Background(), env)
+	if err != nil || !strings.Contains(p.String(), "install curl") || strings.Contains(p.String(), "not available") {
+		t.Fatalf("%v\n%s", err, p.String())
 	}
 }
