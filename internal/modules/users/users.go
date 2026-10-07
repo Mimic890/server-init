@@ -22,6 +22,36 @@ import (
 // LoginDefs holds UMASK (applied by pam_umask to all sessions).
 const LoginDefs = "/etc/login.defs"
 
+// pam_umask is in Ubuntu's common-session but not in Debian's; there it is
+// added through a pam-auth-update profile (Debian's drop-in for common-*).
+const (
+	CommonSession  = "/etc/pam.d/common-session"
+	UmaskProfile   = "/usr/share/pam-configs/server-init-umask"
+	umaskProfileID = "server-init-umask"
+)
+
+// RenderUmaskProfile is the pam-auth-update profile that enables pam_umask.
+func RenderUmaskProfile() string {
+	return `Name: umask from /etc/login.defs and GECOS (server-init)
+Default: yes
+Priority: 0
+Session-Type: Additional
+Session-Interactive-Only: no
+Session:
+	optional			pam_umask.so
+`
+}
+
+func pamUmaskActive(s sys.System) bool {
+	for _, l := range strings.Split(sys.ReadString(s, CommonSession), "\n") {
+		l = strings.TrimSpace(l)
+		if !strings.HasPrefix(l, "#") && strings.Contains(l, "pam_umask.so") {
+			return true
+		}
+	}
+	return false
+}
+
 // OptionalGroups can be offered in the form.
 var OptionalGroups = []string{"docker", "adm", "systemd-journal"}
 
@@ -248,6 +278,9 @@ func (m *Module) Check(ctx context.Context, env *module.Env) (module.Plan, error
 	if a.Umask027 && umaskOf(sys.ReadString(env.Sys, LoginDefs)) != "027" {
 		p.Add(module.KindFile, LoginDefs, "UMASK 027 in %s", LoginDefs)
 	}
+	if a.Umask027 && !pamUmaskActive(env.Sys) {
+		p.Add(module.KindFile, UmaskProfile, "enable pam_umask for all sessions (pam-auth-update profile %s)", UmaskProfile)
+	}
 	return p, nil
 }
 
@@ -356,6 +389,19 @@ func (m *Module) Apply(ctx context.Context, env *module.Env, _ module.Plan) erro
 	if a.Umask027 {
 		if _, err := env.EditFile(LoginDefs, 0o644, func(old string) string { return SetUmask(old, "027") }); err != nil {
 			return err
+		}
+		if !pamUmaskActive(env.Sys) {
+			if _, err := env.PutFile(UmaskProfile, RenderUmaskProfile(), 0o644); err != nil {
+				return err
+			}
+			if _, err := env.Exec(ctx, "pam-auth-update", "--package"); err != nil {
+				return err
+			}
+			// replayed before the profile file is removed
+			if err := env.Undo("disable pam_umask", "pam-auth-update", "--package", "--remove", umaskProfileID); err != nil {
+				return err
+			}
+			env.Infof("pam_umask enabled for all sessions")
 		}
 	}
 	return nil
