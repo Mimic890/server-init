@@ -35,6 +35,7 @@ func TestSetUmask(t *testing.T) {
 func setup(t *testing.T) (*systest.Host, *module.Env) {
 	h := systest.New(t)
 	h.Write("/etc/login.defs", "UMASK\t\t022\n")
+	h.Write(CommonSession, "session required pam_unix.so\n") // Debian: no pam_umask
 	h.Write("/etc/shadow", "root:$6$x:1:0:99999:7:::\nold::1:0:99999:7:::\n")
 	h.Fail("getent passwd admin")
 	h.On("getent group sudo", "sudo:x:27:")
@@ -56,7 +57,7 @@ func TestCheckAndApply(t *testing.T) {
 	}
 	text := p.String()
 	for _, want := range []string{"create user admin", "add admin to group sudo", "NOPASSWD", "lock the root password",
-		"lock account old: it has an EMPTY password", "UMASK 027", "group docker does not exist"} {
+		"lock account old: it has an EMPTY password", "UMASK 027", "group docker does not exist", "enable pam_umask"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("plan misses %q:\n%s", want, text)
 		}
@@ -65,7 +66,7 @@ func TestCheckAndApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"adduser --disabled-password --gecos '' --shell /bin/bash admin", "usermod -c umask=027 admin",
-		"visudo -cf /etc/sudoers.d/.server-init-check", "passwd -l root", "passwd -l old"} {
+		"visudo -cf /etc/sudoers.d/.server-init-check", "passwd -l root", "passwd -l old", "pam-auth-update --package"} {
 		if !h.Ran(want) {
 			t.Errorf("not run: %s\n%v", want, h.Cmds)
 		}
@@ -114,5 +115,14 @@ func TestKeepRoot(t *testing.T) {
 	p, err := New().Check(context.Background(), env)
 	if err != nil || strings.Contains(p.String(), "admin") {
 		t.Fatalf("%v\n%s", err, p.String())
+	}
+}
+
+func TestUbuntuHasPamUmask(t *testing.T) {
+	h, env := setup(t)
+	h.Write(CommonSession, "session optional\t\t\tpam_umask.so\n")
+	p, _ := New().Check(context.Background(), env)
+	if strings.Contains(p.String(), "enable pam_umask") {
+		t.Fatal("pam_umask already active, nothing to add")
 	}
 }
