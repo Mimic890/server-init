@@ -46,6 +46,15 @@ sx ufw status | grep -q "40022/tcp *LIMIT" || fail "SSH rule missing"
 sx ufw status | grep -q "443/tcp *ALLOW" || fail "HTTPS rule missing"
 sx grep -q "BEGIN UFW AND DOCKER" /etc/ufw/after.rules || fail "docker fix missing"
 
+step "fail2ban"
+sx fail2ban-client status sshd >/dev/null || fail "sshd jail not running"
+sx grep -q "^port = 40022" /etc/fail2ban/jail.d/server-init.local || fail "jail port"
+sx server-init f2b whitelist add 203.0.113.9 >/dev/null || fail "f2b whitelist add"
+sx grep -q "203.0.113.9" /etc/fail2ban/jail.d/server-init-whitelist.local || fail "whitelist not rendered"
+sx server-init f2b blacklist add 192.0.2.66 >/dev/null || fail "f2b blacklist add"
+sx fail2ban-client status server-init-blacklist | grep -q "192.0.2.66" || fail "blacklisted IP not banned"
+sx server-init f2b status >/dev/null || fail "f2b status"
+
 step "login from a client"
 docker cp "$name:/root/.ssh/server-init_ed25519" /tmp/si-key-$$
 chmod 600 /tmp/si-key-$$
@@ -66,6 +75,10 @@ sleep 1
 sx ss -ltn | grep -q ':22 ' || fail "port 22 not back after rollback"
 sx test ! -e /etc/ssh/sshd_config.d/00-server-init.conf || fail "drop-in left behind"
 sx ufw status | grep -q "^22/tcp " || fail "rollback must open port 22 in the active ufw"
+
+step "rollback fail2ban"
+sx server-init --rollback fail2ban >/dev/null || fail "fail2ban rollback"
+sx test ! -e /etc/fail2ban/jail.d/server-init.local || fail "jail left behind"
 
 step "rollback ufw"
 sx server-init --rollback ufw || fail "ufw rollback"

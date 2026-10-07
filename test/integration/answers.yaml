@@ -1,5 +1,5 @@
 # Answers for the integration test (non-interactive run).
-modules: [ssh, ufw]
+modules: [ssh, ufw, fail2ban]
 ssh:
   port: 40022
   user: root
@@ -7,3 +7,5 @@ ssh:
 ufw:
   allow_https: true
   docker_fix: true
+fail2ban:
+  whitelist: [198.51.100.0/24]
