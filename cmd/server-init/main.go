@@ -38,6 +38,8 @@ Usage:
   server-init --dry-run                show planned changes, touch nothing
   server-init --config answers.yaml    non-interactive, all answers preset
   server-init --rollback [module]      undo the last run (or one module)
+  server-init audit                    security audit, changes nothing (exit 1 on problems)
+  server-init scan [--clamav]          malware scan; --clamav installs ClamAV and scans with it
   server-init f2b <command>            manage fail2ban (see: server-init f2b help)
   server-init ssh finalize             close the old SSH port after a --config run
   server-init --version
