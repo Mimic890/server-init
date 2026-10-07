@@ -260,18 +260,26 @@ type pkgPlan struct {
 	unavailable []string
 }
 
+// aptListsEmpty reports whether apt has no package lists yet (fresh images
+// before the first apt update): availability is unknown then.
+func aptListsEmpty(s sys.System) bool {
+	m, _ := s.Glob("/var/lib/apt/lists/*_Packages*")
+	return len(m) == 0
+}
+
 func (m *Module) planPackages(ctx context.Context, env *module.Env) pkgPlan {
 	var pp pkgPlan
+	unknown := aptListsEmpty(env.Sys)
 	for _, p := range env.Answers.System.Packages {
 		switch {
 		case p == "zellij":
-			if !sys.Has(env.Sys, "zellij") && !sys.Exists(env.Sys, zellijBin) && !aptCandidate(ctx, env.Sys, p) {
+			if !sys.Has(env.Sys, "zellij") && !sys.Exists(env.Sys, zellijBin) && (unknown || !aptCandidate(ctx, env.Sys, p)) {
 				pp.zellij = true
 			} else if !sys.Has(env.Sys, "zellij") && !sys.Exists(env.Sys, zellijBin) {
 				pp.apt = append(pp.apt, p)
 			}
 		case sys.PkgInstalled(ctx, env.Sys, p):
-		case aptCandidate(ctx, env.Sys, p):
+		case unknown || aptCandidate(ctx, env.Sys, p):
 			pp.apt = append(pp.apt, p)
 		default:
 			pp.unavailable = append(pp.unavailable, p)
@@ -351,6 +359,9 @@ func (m *Module) Check(ctx context.Context, env *module.Env) (module.Plan, error
 	pp := m.planPackages(ctx, env)
 	if len(pp.apt) > 0 {
 		p.Add(module.KindPackage, "packages", "install %s", strings.Join(pp.apt, " "))
+		if aptListsEmpty(env.Sys) {
+			p.Note("apt has no package lists yet: availability is checked after apt update")
+		}
 	}
 	if pp.zellij {
 		p.Add(module.KindPackage, "zellij", "install zellij %s from the GitHub release (sha256 verified)", zellijBin)
@@ -428,7 +439,10 @@ func (m *Module) Apply(ctx context.Context, env *module.Env, _ module.Plan) erro
 			return err
 		}
 	}
-	pp := m.planPackages(ctx, env)
+	pp := m.planPackages(ctx, env) // after apt update: the lists are current
+	for _, u := range pp.unavailable {
+		env.Warnf("package %s is not available, skipped", u)
+	}
 	if err := env.Install(ctx, pp.apt...); err != nil {
 		return err
 	}
