@@ -3,7 +3,7 @@
 # After every run the answers are saved to /etc/server-init/answers.yaml.
 
 # Modules to run (apply order is fixed; preflight always runs).
-modules: [system, cleanup, users, ssh, ufw, fail2ban, sysctl]
+modules: [system, users, ssh, ufw, fail2ban, sysctl, cleanup]
 
 system:
   upgrade: true                 # apt update + full-upgrade

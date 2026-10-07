@@ -128,12 +128,12 @@ Modules always run in this order:
 |--------|--------------|
 | `preflight` | Checks root, OS version, systemd, free disk, required tools, internet. Always runs. The `/etc` backup is made right before the first change. |
 | `system` | `apt update` + `full-upgrade`; hostname, timezone, locale; NTP with systemd-timesyncd; unattended-upgrades limited to **security updates**, optional automatic reboot at a chosen time; base packages (curl, git, htop, btop, neovim, fish, zellij, ncdu, jq, unzip). |
-| `cleanup` | Optional removal of snapd (with an apt pin), cloud-init, popularity-contest; Ubuntu MOTD news off; `apt autoremove --purge`, `apt clean`; journald `SystemMaxUse`. |
 | `users` | Admin user (or keep root, key-only); sudo through a validated `/etc/sudoers.d` drop-in with or without password; groups sudo + optional docker/adm/systemd-journal; locks the root password and accounts with empty passwords; fixes home/`~/.ssh`/`authorized_keys` permissions; umask 027. |
 | `ssh` | Key-only SSH, custom port, modern crypto, two-phase port change with an automatic rollback (details below). Port of [ssh-setting-script](https://github.com/Mimic890/ssh-setting-script). |
 | `ufw` | Deny incoming / allow outgoing; SSH with `ufw limit`; optional 80/443 and trusted interfaces (mesh VPN); DOCKER-USER rules so Docker cannot bypass ufw. Enabled only once the SSH rule is in place. |
 | `fail2ban` | `sshd` jail (aggressive mode, systemd backend, the real SSH port), optional `recidive`, permanent blacklist jail on all ports, whitelist with your current IP. |
 | `sysctl` | BBR + fq; reverse path filter, no ICMP redirects, no source routing, SYN cookies, martian logging off; swap file if there is no swap; `vm.swappiness`. |
+| `cleanup` | Optional removal of snapd (with an apt pin), cloud-init, popularity-contest; Ubuntu MOTD news off; `apt autoremove --purge`, `apt clean`; journald `SystemMaxUse`. |
 
 ### SSH
 
