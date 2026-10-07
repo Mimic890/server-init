@@ -36,6 +36,10 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 	if a.Banner == "" {
 		a.Banner = "Authorized access only. All activity may be logged."
 	}
+	if env.Quick {
+		// the login user follows the users module (resolved at Check)
+		a.User = ""
+	}
 	oldPorts := env.Facts.SSHPorts
 	userExists := func() bool { _, ok := sys.LookupUser(ctx, env.Sys, a.User); return ok }
 
@@ -80,13 +84,13 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 					}
 					return nil
 				}),
-		),
+		).WithHideFunc(env.Advanced(nil)),
 		huh.NewGroup(
 			huh.NewConfirm().
 				TitleFunc(func() string { return fmt.Sprintf("Give '%s' sudo rights without password (NOPASSWD)?", a.User) }, &a.User).
 				Description("The user is created without a password, so sudo only works without one.").
 				Value(&a.GrantSudo),
-		).WithHideFunc(func() bool { return a.User == "root" || usersModuleCreates(env, a.User) || userExists() }),
+		).WithHideFunc(env.Advanced(func() bool { return a.User == "root" || usersModuleCreates(env, a.User) || userExists() })),
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("SSH key").
@@ -145,7 +149,7 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				TitleFunc(func() string { return fmt.Sprintf("Allow SSH logins only for '%s'?", a.User) }, &a.User).
 				Description("AllowUsers: everyone else is refused, even with a valid key. Recommended.").
 				Value(&a.AllowOnly),
-		),
+		).WithHideFunc(env.Advanced(nil)),
 		huh.NewGroup(
 			huh.NewInput().
 				Title("MaxAuthTries").
@@ -161,7 +165,7 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				Title("Enable ClientAlive checks (300s x 2)?").
 				Description("Every 5 minutes the server checks the client; after 2 misses the dead session is closed. Idle but alive users stay connected. MaxStartups 10:30:60 is always set.").
 				Value(&a.ClientAlive),
-		).Title("Brute-force limits"),
+		).Title("Brute-force limits").WithHideFunc(env.Advanced(nil)),
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Allow X11 forwarding?").
@@ -184,12 +188,12 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				Title("Set a login banner?").
 				Description("Text shown to everyone before login (legal notice). Optional.").
 				Value(&st.banner),
-		).Title("Forwarding and extras"),
+		).Title("Forwarding and extras").WithHideFunc(env.Advanced(nil)),
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Banner text (one line)").
 				Value(&a.Banner),
-		).WithHideFunc(func() bool { return !st.banner }),
+		).WithHideFunc(env.Advanced(func() bool { return !st.banner })),
 	}
 	// Firewall: only asked when a host firewall is active and the ufw module
 	// will not take care of the port.

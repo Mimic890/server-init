@@ -16,6 +16,7 @@ Show
 
 Type "server-init --only ssh,ufw" Enter
 Sleep 3s
+# main menu (Custom setup is preselected by --only) -> module picker
 Enter Sleep 1.5s Enter Sleep 1.5s
 # ssh: defaults, generated key shown once
 Enter Sleep 500ms Enter Sleep 500ms Down Enter Sleep 500ms Enter Sleep 500ms Enter Sleep 500ms

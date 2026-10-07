@@ -5,6 +5,7 @@ package facts
 import (
 	"context"
 	"net"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -21,6 +22,7 @@ type Facts struct {
 	IsRoot      bool
 	Systemd     bool
 	FreeDiskMB  uint64 // on /
+	DiskMB      uint64 // size of /
 	Internet    bool
 	SSHPorts    []int
 	ClientIP    string
@@ -29,6 +31,8 @@ type Facts struct {
 	SSHSocket   bool // Ubuntu socket activation (ssh.socket)
 	HasSwap     bool
 	MemTotalMB  uint64
+	CPUs        int
+	Uptime      time.Duration
 }
 
 // MinFreeDiskMB is the lowest free space on / that preflight accepts.
@@ -40,7 +44,7 @@ func Gather(ctx context.Context, s sys.System, uid int) *Facts {
 	f.OSID, f.OSVersion, f.OSPretty = ParseOSRelease(sys.ReadString(s, "/etc/os-release"))
 	f.OSSupported = Supported(f.OSID, f.OSVersion)
 	f.Systemd = sys.Exists(s, "/run/systemd/system")
-	f.FreeDiskMB = freeDiskMB("/")
+	f.FreeDiskMB, f.DiskMB = diskMB("/")
 	f.Internet = internet(ctx)
 	f.SSHSocket = sys.UnitEnabled(ctx, s, "ssh.socket") || sys.UnitActive(ctx, s, "ssh.socket")
 	f.SSHPorts = sys.SSHPorts(ctx, s)
@@ -50,6 +54,8 @@ func Gather(ctx context.Context, s sys.System, uid int) *Facts {
 	swaps := sys.ReadString(s, "/proc/swaps")
 	f.HasSwap = len(strings.Split(strings.TrimSpace(swaps), "\n")) > 1
 	f.MemTotalMB = memTotalMB(sys.ReadString(s, "/proc/meminfo"))
+	f.CPUs = runtime.NumCPU()
+	f.Uptime = ParseUptime(sys.ReadString(s, "/proc/uptime"))
 	return f
 }
 
@@ -104,12 +110,23 @@ func atoi(s string) int {
 	return n
 }
 
-func freeDiskMB(path string) uint64 {
+// diskMB returns the free and the total space of the file system at path.
+func diskMB(path string) (free, total uint64) {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(path, &st); err != nil {
+		return 0, 0
+	}
+	return st.Bavail * uint64(st.Bsize) / (1 << 20), st.Blocks * uint64(st.Bsize) / (1 << 20)
+}
+
+// ParseUptime reads the first field of /proc/uptime (seconds).
+func ParseUptime(content string) time.Duration {
+	f := strings.Fields(content)
+	if len(f) == 0 {
 		return 0
 	}
-	return st.Bavail * uint64(st.Bsize) / (1 << 20)
+	sec, _, _ := strings.Cut(f[0], ".")
+	return time.Duration(atoi(sec)) * time.Second
 }
 
 func memTotalMB(meminfo string) uint64 {

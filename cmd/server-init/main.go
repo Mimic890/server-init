@@ -33,8 +33,8 @@ var version = "dev"
 const usage = `server-init - initial setup and hardening for Debian 12+ / Ubuntu 24.04+
 
 Usage:
-  server-init                          full interactive setup (TUI)
-  server-init --only ssh,ufw           run only the selected modules
+  server-init                          interactive menu (TUI)
+  server-init --only ssh,ufw           preselect modules for the custom setup
   server-init --dry-run                show planned changes, touch nothing
   server-init --config answers.yaml    non-interactive, all answers preset
   server-init --rollback [module]      undo the last run (or one module)
@@ -158,6 +158,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Env:      env,
 		DryRun:   *dryRun,
 		Only:     ids,
+		Commands: modules.Commands(),
 		Sink:     sink,
 		LogPath:  log.DefaultPath,
 	}

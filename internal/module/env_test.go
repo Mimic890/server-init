@@ -89,3 +89,20 @@ func TestPlanFile(t *testing.T) {
 		t.Fatalf("plan: %+v", p)
 	}
 }
+
+func TestAdvancedHidesInQuickMode(t *testing.T) {
+	shown := false
+	own := func() bool { return !shown }
+	e := &module.Env{}
+	if e.Advanced(nil)() || !e.Advanced(own)() {
+		t.Fatal("normal mode: only the group's own condition hides it")
+	}
+	shown = true
+	if e.Advanced(own)() {
+		t.Fatal("normal mode: visible group hidden")
+	}
+	e.Quick = true
+	if !e.Advanced(nil)() || !e.Advanced(own)() {
+		t.Fatal("quick mode must hide advanced groups")
+	}
+}

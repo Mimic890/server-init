@@ -118,7 +118,7 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				Options(groupOpts...).
 				Value(&a.ExtraGroups).
 				Height(len(groupOpts) + 4),
-		).WithHideFunc(func() bool { return !a.CreateAdmin }),
+		).WithHideFunc(env.Advanced(func() bool { return !a.CreateAdmin })),
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Lock the root password?").
@@ -128,7 +128,7 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				Title("Set umask 027?").
 				Description("New files are not readable by other users (UMASK in /etc/login.defs, applied by pam_umask).").
 				Value(&a.Umask027),
-		),
+		).WithHideFunc(env.Advanced(nil)),
 	}
 }
 

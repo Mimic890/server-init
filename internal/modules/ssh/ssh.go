@@ -54,14 +54,18 @@ func (m *Module) Prepare(ctx context.Context, env *module.Env) error {
 		a.Port = sys.RandomFreePort(ctx, env.Sys)
 	}
 	if a.User == "" {
-		u := env.Answers.Users
-		if env.Selected("users") && u.CreateAdmin && u.Name != "" {
-			a.User = u.Name
-		} else {
-			a.User = "root"
-		}
+		a.User = defaultUser(env)
 	}
 	return nil
+}
+
+// defaultUser is the admin the users module creates, else root.
+func defaultUser(env *module.Env) string {
+	u := env.Answers.Users
+	if env.Selected("users") && u.CreateAdmin && u.Name != "" {
+		return u.Name
+	}
+	return "root"
 }
 
 // settings are the answers resolved against the host.
@@ -83,6 +87,9 @@ func (m *Module) resolve(ctx context.Context, env *module.Env) (settings, error)
 	a := &env.Answers.SSH
 	if m.form != nil && !m.form.banner {
 		a.Banner = ""
+	}
+	if a.User == "" {
+		a.User = defaultUser(env)
 	}
 	var s settings
 	if a.Port < 1 || a.Port > 65535 {

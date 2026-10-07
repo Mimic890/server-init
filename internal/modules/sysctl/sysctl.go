@@ -46,6 +46,9 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 	if a.SwapSize == "" && !hasSwap(env.Sys) {
 		a.SwapSize = "2G"
 	}
+	if env.Quick {
+		return nil
+	}
 	return []*huh.Group{
 		huh.NewGroup(
 			huh.NewConfirm().

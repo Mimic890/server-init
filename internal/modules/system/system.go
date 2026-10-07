@@ -99,10 +99,6 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 	}
 	return []*huh.Group{
 		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Upgrade all packages now (apt full-upgrade)?").
-				Description("Recommended on a fresh server. A kernel update needs a reboot afterwards.").
-				Value(&a.Upgrade),
 			huh.NewInput().
 				Title("Hostname").
 				Description("Name of this server, e.g. web1 or web1.example.com.").
@@ -118,6 +114,12 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				Description("e.g. Etc/UTC, Europe/Berlin, America/New_York. UTC is a good default for servers.").
 				Value(&a.Timezone).
 				Validate(func(s string) error { return validTimezone(env.Sys, s) }),
+		).Title("Basics"),
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Upgrade all packages now (apt full-upgrade)?").
+				Description("Recommended on a fresh server. A kernel update needs a reboot afterwards.").
+				Value(&a.Upgrade),
 			huh.NewInput().
 				Title("Locale").
 				Description("System language, e.g. C.UTF-8 or en_US.UTF-8.").
@@ -133,7 +135,7 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				Title("Keep the clock in sync (NTP, systemd-timesyncd)?").
 				Description("TLS, logs and fail2ban need a correct clock.").
 				Value(&a.NTP),
-		).Title("Basics"),
+		).Title("Packages and clock").WithHideFunc(env.Advanced(nil)),
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Install security updates automatically?").
@@ -152,7 +154,7 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 					}
 					return nil
 				}),
-		).Title("Automatic updates"),
+		).Title("Automatic updates").WithHideFunc(env.Advanced(nil)),
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
 				Title("Base packages").
@@ -160,7 +162,7 @@ func (m *Module) Form(env *module.Env) []*huh.Group {
 				Options(pkgOpts...).
 				Value(&a.Packages).
 				Height(len(pkgOpts) + 4),
-		),
+		).WithHideFunc(env.Advanced(nil)),
 	}
 }
 
