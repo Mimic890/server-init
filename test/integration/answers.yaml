@@ -1,5 +1,12 @@
 # Answers for the integration test (non-interactive run).
-modules: [users, ssh, ufw, fail2ban]
+modules: [system, users, ssh, ufw, fail2ban]
+system:
+  upgrade: false            # keeps the test fast
+  timezone: Europe/Berlin
+  locale: en_US.UTF-8
+  auto_reboot: true
+  auto_reboot_time: "03:30"
+  packages: [curl, jq, btop, zellij]
 users:
   create_admin: true
   name: admin

@@ -25,7 +25,8 @@ done
 docker cp "$bin" "$name:/usr/local/bin/server-init"
 docker cp "$here/answers.yaml" "$name:/root/answers.yaml"
 ip=$(docker inspect "$name" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
-sx() { docker exec "$name" "$@"; }
+# SI_EXEC_ENV=KEY=VALUE is passed to commands in the container (e.g. a proxy).
+sx() { docker exec ${SI_EXEC_ENV:+-e "$SI_EXEC_ENV"} "$name" "$@"; }
 etc_sum() { sx sh -c 'find /etc -type f -print0 | sort -z | xargs -0 sha256sum' | sha256sum; }
 
 step "dry run changes nothing"
@@ -39,6 +40,17 @@ sx server-init --config /root/answers.yaml --yes >/tmp/apply.out || { cat /tmp/a
 sx ss -ltn | grep -q ':40022 ' || fail "not listening on 40022"
 sx ss -ltn | grep -q ':22 ' && fail "port 22 still open"
 sx sshd -T | grep -qx 'passwordauthentication no' || fail "password auth on"
+
+step "system"
+[[ $(sx timedatectl show -p Timezone --value) == Europe/Berlin ]] || fail "timezone"
+sx grep -qx "LANG=en_US.UTF-8" /etc/default/locale || fail "locale"
+sx locale -a | grep -qi "en_us.utf8" || fail "locale not generated"
+sx zellij --version >/dev/null || fail "zellij"
+sx btop --version >/dev/null || fail "btop"
+origins=$(sx unattended-upgrade --dry-run -d 2>&1 | sed -n 's/^Allowed origins are: //p')
+[[ -n $origins ]] || fail "unattended-upgrades origins not found"
+IFS=';' read -ra items <<<"${origins//, /;}"
+for o in "${items[@]}"; do [[ $o == *ecurity* ]] || fail "non-security origin enabled: $o"; done
 
 step "firewall"
 sx ufw status | grep -q "Status: active" || fail "ufw not active"
