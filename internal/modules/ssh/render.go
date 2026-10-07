@@ -117,12 +117,14 @@ MACs %s
 
 // RenderSocket renders the ssh.socket drop-in (Ubuntu socket activation).
 // The empty ListenStream= drops the addresses from ssh.socket and from the
-// sshd-socket-generator.
+// sshd-socket-generator. Ubuntu's unit sets BindIPv6Only=ipv6-only, so a
+// bare port would listen on IPv6 only: IPv4 and IPv6 are listed separately,
+// like the unit itself does.
 func RenderSocket(ports []int) string {
 	var b strings.Builder
 	b.WriteString("# Managed by server-init\n[Socket]\nListenStream=\n")
 	for _, p := range ports {
-		fmt.Fprintf(&b, "ListenStream=%d\n", p)
+		fmt.Fprintf(&b, "ListenStream=0.0.0.0:%d\nListenStream=[::]:%d\n", p, p)
 	}
 	return b.String()
 }
