@@ -12,6 +12,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 name="si-it-$$"
 fail() { echo "FAIL: $*" >&2; docker exec "$name" tail -n 40 /var/log/server-init.log >&2 || true; exit 1; }
 step() { echo "--- $*"; }
+# grep that reads all input: `grep -q` would close the pipe early and, with
+# pipefail, turn a SIGPIPE of the producer into a failure.
+has() { grep "$@" >/dev/null; }
 cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
@@ -37,14 +40,14 @@ grep -q "Dry run: nothing was changed" /tmp/dry.out || fail "dry run output"
 
 step "apply"
 sx server-init --config /root/answers.yaml --yes >/tmp/apply.out || { cat /tmp/apply.out; fail "apply"; }
-sx ss -ltn | grep -q ':40022 ' || fail "not listening on 40022"
-sx ss -ltn | grep -q ':22 ' && fail "port 22 still open"
-sx sshd -T | grep -qx 'passwordauthentication no' || fail "password auth on"
+sx ss -ltn | has ':40022 ' || fail "not listening on 40022"
+sx ss -ltn | has ':22 ' && fail "port 22 still open"
+sx sshd -T | has -x 'passwordauthentication no' || fail "password auth on"
 
 step "system"
 [[ $(sx timedatectl show -p Timezone --value) == Europe/Berlin ]] || fail "timezone"
 sx grep -qx "LANG=en_US.UTF-8" /etc/default/locale || fail "locale"
-sx locale -a | grep -qi "en_us.utf8" || fail "locale not generated"
+sx locale -a | has -i "en_us.utf8" || fail "locale not generated"
 sx zellij --version >/dev/null || fail "zellij"
 sx btop --version >/dev/null || fail "btop"
 origins=$(sx unattended-upgrade --dry-run -d 2>&1 | sed -n 's/^Allowed origins are: //p')
@@ -53,12 +56,12 @@ IFS=';' read -ra items <<<"${origins//, /;}"
 for o in "${items[@]}"; do [[ $o == *ecurity* ]] || fail "non-security origin enabled: $o"; done
 
 step "cleanup"
-sx systemd-analyze cat-config systemd/journald.conf | grep -qx "SystemMaxUse=150M" || fail "journald limit"
+sx systemd-analyze cat-config systemd/journald.conf | has -x "SystemMaxUse=150M" || fail "journald limit"
 
 step "firewall"
-sx ufw status | grep -q "Status: active" || fail "ufw not active"
-sx ufw status | grep -q "40022/tcp *LIMIT" || fail "SSH rule missing"
-sx ufw status | grep -q "443/tcp *ALLOW" || fail "HTTPS rule missing"
+sx ufw status | has "Status: active" || fail "ufw not active"
+sx ufw status | has "40022/tcp *LIMIT" || fail "SSH rule missing"
+sx ufw status | has "443/tcp *ALLOW" || fail "HTTPS rule missing"
 sx grep -q "BEGIN UFW AND DOCKER" /etc/ufw/after.rules || fail "docker fix missing"
 
 step "fail2ban"
@@ -67,8 +70,19 @@ sx grep -q "^port = 40022" /etc/fail2ban/jail.d/server-init.local || fail "jail 
 sx server-init f2b whitelist add 203.0.113.9 >/dev/null || fail "f2b whitelist add"
 sx grep -q "203.0.113.9" /etc/fail2ban/jail.d/server-init-whitelist.local || fail "whitelist not rendered"
 sx server-init f2b blacklist add 192.0.2.66 >/dev/null || fail "f2b blacklist add"
-sx fail2ban-client status server-init-blacklist | grep -q "192.0.2.66" || fail "blacklisted IP not banned"
+sx fail2ban-client status server-init-blacklist | has "192.0.2.66" || fail "blacklisted IP not banned"
 sx server-init f2b status >/dev/null || fail "f2b status"
+
+step "sysctl"
+[[ $(sx sysctl -n net.ipv4.tcp_congestion_control) == bbr ]] || fail "bbr"
+# net.core.default_qdisc only exists in the host's network namespace
+if sx test -e /proc/sys/net/core/default_qdisc; then
+  [[ $(sx sysctl -n net.core.default_qdisc) == fq ]] || fail "fq"
+fi
+sx grep -qx "net.core.default_qdisc = fq" /etc/sysctl.d/99-server-init.conf || fail "fq not configured"
+[[ $(sx sysctl -n net.ipv4.conf.all.accept_redirects) == 0 ]] || fail "redirects"
+[[ $(sx sysctl -n net.ipv4.tcp_syncookies) == 1 ]] || fail "syncookies"
+[[ $(sx sysctl -n vm.swappiness) == 10 ]] || fail "swappiness"
 
 step "login from a client"
 docker cp "$name:/home/admin/.ssh/server-init_ed25519" /tmp/si-key-$$
@@ -82,7 +96,7 @@ client "root@$ip true" 2>/dev/null && fail "root login must be refused (AllowUse
 docker run --rm "$img" ssh "${opts[@]}" -o PubkeyAuthentication=no -p 40022 "admin@$ip" true 2>/dev/null \
   && fail "password login must be refused"
 rm -f /tmp/si-key-$$
-sx passwd -S root | grep -q " L " || fail "root password not locked"
+sx passwd -S root | has " L " || fail "root password not locked"
 
 step "rerun is a no-op"
 sx server-init --config /root/answers.yaml --yes >/tmp/rerun.out || { cat /tmp/rerun.out; fail "rerun"; }
@@ -91,9 +105,9 @@ grep -q "Everything is already applied" /tmp/rerun.out || { cat /tmp/rerun.out; 
 step "rollback"
 sx server-init --rollback ssh || fail "rollback"
 sleep 1
-sx ss -ltn | grep -q ':22 ' || fail "port 22 not back after rollback"
+sx ss -ltn | has ':22 ' || fail "port 22 not back after rollback"
 sx test ! -e /etc/ssh/sshd_config.d/00-server-init.conf || fail "drop-in left behind"
-sx ufw status | grep -q "^22/tcp " || fail "rollback must open port 22 in the active ufw"
+sx ufw status | has "^22/tcp " || fail "rollback must open port 22 in the active ufw"
 
 step "rollback fail2ban"
 sx server-init --rollback fail2ban >/dev/null || fail "fail2ban rollback"
@@ -101,7 +115,12 @@ sx test ! -e /etc/fail2ban/jail.d/server-init.local || fail "jail left behind"
 
 step "rollback ufw"
 sx server-init --rollback ufw || fail "ufw rollback"
-sx ufw status | grep -q "Status: inactive" || fail "ufw still active after rollback"
+sx ufw status | has "Status: inactive" || fail "ufw still active after rollback"
 sx grep -q "BEGIN UFW AND DOCKER" /etc/ufw/after.rules && fail "docker block left behind"
+
+step "global rollback (latest backup)"
+sx server-init --rollback >/dev/null || fail "global rollback"
+sx ss -ltn | has ':22 ' || fail "port 22 not listening after the global rollback"
+sx test ! -e /etc/sysctl.d/99-server-init.conf || fail "sysctl drop-in left behind"
 
 echo "PASS: $img"

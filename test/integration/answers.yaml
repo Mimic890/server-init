@@ -1,5 +1,5 @@
 # Answers for the integration test (non-interactive run).
-modules: [system, cleanup, users, ssh, ufw, fail2ban]
+modules: [system, cleanup, users, ssh, ufw, fail2ban, sysctl]
 system:
   upgrade: false            # keeps the test fast
   timezone: Europe/Berlin
@@ -24,3 +24,8 @@ ufw:
   docker_fix: true
 fail2ban:
   whitelist: [198.51.100.0/24]
+sysctl:
+  bbr: true
+  hardening: true
+  swap_size: "0"           # overlayfs in the test container cannot hold a swap file
+  swappiness: 10
