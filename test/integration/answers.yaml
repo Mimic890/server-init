@@ -1,5 +1,5 @@
 # Answers for the integration test (non-interactive run).
-modules: [system, cleanup, users, ssh, ufw, fail2ban, sysctl]
+modules: [system, users, ssh, ufw, fail2ban, sysctl, cleanup]
 system:
   upgrade: false            # keeps the test fast
   timezone: Europe/Berlin

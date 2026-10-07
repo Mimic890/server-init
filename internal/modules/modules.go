@@ -23,12 +23,14 @@ func Registry() *module.Registry {
 	return module.NewRegistry(
 		preflight.New(),
 		system.New(),
-		cleanup.New(),
 		users.New(),
 		ssh.New(),
 		ufw.New(),
 		fail2ban.New(),
 		sysctl.New(),
+		// last: apt clean / autoremove after every package is installed, so
+		// a rerun finds nothing left to clean
+		cleanup.New(),
 	)
 }
 
