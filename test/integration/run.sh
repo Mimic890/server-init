@@ -54,6 +54,9 @@ origins=$(sx unattended-upgrade --dry-run -d 2>&1 | sed -n 's/^Allowed origins a
 [[ -n $origins ]] || fail "unattended-upgrades origins not found"
 IFS=';' read -ra items <<<"${origins//, /;}"
 for o in "${items[@]}"; do [[ $o == *ecurity* ]] || fail "non-security origin enabled: $o"; done
+# the dry run above downloads pending updates into the apt cache; without
+# this the rerun below would plan an apt clean
+sx apt-get clean
 
 step "cleanup"
 sx systemd-analyze cat-config systemd/journald.conf | has -x "SystemMaxUse=150M" || fail "journald limit"
